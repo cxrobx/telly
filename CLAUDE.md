@@ -53,6 +53,7 @@ unless set (a test checks it); it's never set on the NAS.
 | `requester.py` | Verifies plexbot's per-turn token and resolves it to a plex_id. web → Overseerr `plexId` (cached 24h); discord → `/link` rows only. **Never falls back to anyone** |
 | `mcp_server.py` | `MCPServer` (mcp SDK **2.x**; FastMCP was renamed). Tools read the caller from `ctx.headers`, and **no tool has a user parameter** (a test enforces this) |
 | `api.py` | Web API (`/api/*`). Session cookie from Sign in with Plex. The PIN lives in a signed cookie, never in the request (spec §3). Writes must be JSON |
+| (owner's Discord) | Linked with `source=admin` on 2026-09-27: plexbot's `DISCORD_ADMIN_USER_ID` ↔ the Plex owner, both facts Chris configured, so no `!link` for him. Everyone else proves it with `/link` |
 | `linking.py` | `/link`: plexbot gets a code for the Discord id its token vouches for, and the person signs in with Plex (PIN flow) on the web app's `/link` page |
 | `plexdata.py` | Library mirror, watchlists → follows (`source=watchlist`, removed when it leaves the watchlist; unfollow stays sticky), Overseerr ids for Request |
 | `recs.py` | Seeds (history decayed by recency, and thumbs-up) → TMDB recs and trending → exclusions → Haiku re-rank with reasons. Falls back to templated reasons. **The nightly run skips members with no Overseerr account** (Chris, 2026-09-27: they can't request or use plexbot's chat, so it's wasted compute); their existing picks stay |

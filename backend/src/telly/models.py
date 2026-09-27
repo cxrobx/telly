@@ -135,7 +135,7 @@ class IdentityLink(Base):
     surface: Mapped[str] = mapped_column(String, primary_key=True)  # web | discord
     external_id: Mapped[str] = mapped_column(String, primary_key=True)
     plex_id: Mapped[int] = mapped_column(ForeignKey("users.plex_id"), index=True)
-    source: Mapped[str] = mapped_column(String)  # overseerr | link
+    source: Mapped[str] = mapped_column(String)  # overseerr | link | admin (owner ↔ plexbot's configured admin)
     display_name: Mapped[str] = mapped_column(String, default="")
     checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
