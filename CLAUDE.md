@@ -26,7 +26,7 @@ SQLite on purpose: a handful of users, one writer, no extra container on the NAS
 
 ```bash
 cd backend
-uv run pytest -q                 # 129 tests: detection, sync/poll, MCP scoping + /link + alerts, web auth/scoping, recs, renewals, ratings, taste, migrations
+uv run pytest -q                 # 141 tests: detection, sync/poll, MCP scoping + /link + alerts, web auth/scoping, recs, renewals, ratings, taste, migrations
 uv run telly migrate             # alembic upgrade head
 uv run telly run                 # sync → plexdata → poll → infer → deliver → recs (the nightly job, 04:10 ET)
 uv run telly poll --hot          # only shows airing yesterday/today/tomorrow (hourly, then deliver)
@@ -56,7 +56,7 @@ unless set (a test checks it); it's never set on the NAS.
 | (owner's Discord) | Linked with `source=admin` on 2026-09-27: plexbot's `DISCORD_ADMIN_USER_ID` ↔ the Plex owner, both facts Chris configured, so no `!link` for him. Everyone else proves it with `/link` |
 | `linking.py` | `/link`: plexbot gets a code for the Discord id its token vouches for, and the person signs in with Plex (PIN flow) on the web app's `/link` page |
 | `plexdata.py` | Library mirror, watchlists → follows (`source=watchlist`, removed when it leaves the watchlist; unfollow stays sticky), Overseerr ids for Request |
-| `recs.py` | Seeds (history decayed by recency, and thumbs-up) → TMDB recs and trending → exclusions → Haiku re-rank with reasons. Falls back to templated reasons. **The nightly run skips members with no Overseerr account** (Chris, 2026-09-27: they can't request or use plexbot's chat, so it's wasted compute); their existing picks stay |
+| `recs.py` | Seeds (history decayed by recency, and thumbs-up) → TMDB recs and trending → exclusions → Haiku re-rank with reasons. Falls back to templated reasons. **The nightly run skips members with no Overseerr account** (Chris, 2026-09-27: they can't request or use plexbot's chat, so it's wasted compute); their existing picks stay. The same pass builds the home page's **Trending** rail (`trending_picks`): this week's TMDB trending ordered by buzz × freshness × fit (a direct seed match + a genre profile of their recommendations), a misfit sinking but never hidden, never repeating a home-page pick; templated reasons, no model |
 | `renewals.py` | Weekly news check for shows TMDB lags on. Accepts only the next season, from a trusted outlet, confirmed by fetching the page. Old announcements (>30 d, URL month wins) are `quiet`: timeline only, no alert, not in What's new |
 | `alerts.py` | Fan-out, at most once: the Delivery row is committed as `sending` before the send, so a crash means a missed alert, never a double one |
 | `ratings.py` | IMDb (OMDb) + Rotten Tomatoes critics/audience (MDBList, `api.mdblist.com/tmdb/{show,movie}/{id}`; OMDb has RT for movies only, 0 of 12 series). Weekly per title, for everything followed or picked; `telly ratings --force` refills early. The audience source is `popcorn` on the new host and `tomatoesaudience` on the legacy one, so both are parsed |

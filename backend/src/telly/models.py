@@ -223,6 +223,27 @@ class Recommendation(Base):
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class TrendingPick(Base):
+    """What's trending this week, ordered for one person (recs.trending_for). Rebuilt nightly
+    beside their picks and never repeats one; `reason` is templated, no model."""
+
+    __tablename__ = "trending_picks"
+
+    plex_id: Mapped[int] = mapped_column(ForeignKey("users.plex_id"), primary_key=True)
+    tmdb_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    media_type: Mapped[str] = mapped_column(String, primary_key=True)
+    rank: Mapped[int] = mapped_column(Integer)
+    score: Mapped[float] = mapped_column()
+    title: Mapped[str] = mapped_column(String, default="")
+    year: Mapped[int | None] = mapped_column(Integer)
+    poster_path: Mapped[str | None] = mapped_column(String)
+    backdrop_path: Mapped[str | None] = mapped_column(String)
+    overview: Mapped[str] = mapped_column(String, default="")
+    reason: Mapped[str] = mapped_column(String, default="")
+    in_library: Mapped[bool] = mapped_column(default=False)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class Feedback(Base):
     """+1 / -1 on a title. -1 hides it for good; +1 makes it a taste seed."""
 

@@ -74,7 +74,7 @@ export type Home = {
   airing_soon: TimelineItem[];
   whats_new: NewsEvent[];
   for_you: Pick[];
-  renewed_no_date: Undated[];
+  trending: Pick[];
 };
 
 export type Timeline = { from: string; to: string; dated: TimelineItem[]; renewed_no_date: Undated[] };

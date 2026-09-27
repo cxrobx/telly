@@ -9,6 +9,12 @@
    obscure titles (under 50 votes); nudge by rating.
 4. Haiku re-ranks the top 40 into 20 and writes a one-line reason for each. If Haiku is
    unavailable, the code order stands and reasons are templated ("Because you watched …").
+
+Trending (the home page rail, `trending_for`) is built in the same pass, from the same TMDB
+calls: this week's trending titles they haven't seen and the home page doesn't already show as
+a pick, ordered by buzz × freshness × fit. Fit is a direct match (TMDB recommends it off one of
+their seeds) plus a genre profile of everything recommended off their seeds, so a bad fit sinks
+but isn't hidden.
 """
 
 from __future__ import annotations
@@ -17,7 +23,7 @@ import logging
 import math
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -27,7 +33,7 @@ from .clients.tmdb import TMDBClient
 from .ratings import lookup
 from . import taste
 from .models import (Feedback, Follow, LibraryItem, Play, Recommendation, TasteSignal, Title,
-                     User, WatchlistItem, aware, utcnow)
+                     TrendingPick, User, WatchlistItem, aware, utcnow)
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +44,14 @@ MIN_VOTES = 50
 SHORTLIST = 40
 KEEP = 20
 TRENDING_WEIGHT = 0.35
+TRENDING_MIN_VOTES = 10  # this week's premieres haven't had time to collect 50
+TRENDING_KEEP = 20
+HOME_PICKS = 10  # the For you rail on the home page; trending never repeats one of these
+FRESH_DAYS, STALE_DAYS = 60, 365
+# How far an old title that's trending again sinks. TV sinks less: TMDB dates a show by its
+# first season, and an old show trending is usually a new season, which is fresh.
+STALE_FLOOR = {"movie": 0.45, "tv": 0.7}
+MISFIT_FLOOR = 0.25  # a title far outside their genres keeps a quarter of its buzz
 
 
 @dataclass
@@ -61,6 +75,9 @@ class Candidate:
     score: float = 0.0
     because: dict[str, float] = field(default_factory=dict)
     trending: bool = False
+    genre_ids: list[int] = field(default_factory=list)
+    released: date | None = None
+    trend_rank: int | None = None  # 0-based, within its media type's trending list
 
 
 def seeds_for(s: Session, plex_id: int, now: datetime | None = None) -> list[Seed]:
@@ -105,12 +122,17 @@ def seeds_for(s: Session, plex_id: int, now: datetime | None = None) -> list[See
 
 
 def _candidate(r: dict, media_type: str) -> Candidate:
-    date = r.get("first_air_date") or r.get("release_date") or ""
+    date_ = r.get("first_air_date") or r.get("release_date") or ""
+    try:
+        released = date.fromisoformat(date_[:10])
+    except ValueError:
+        released = None
     return Candidate(
         tmdb_id=r["id"], media_type=media_type, title=r.get("name") or r.get("title") or "",
-        year=int(date[:4]) if date[:4].isdigit() else None,
+        year=int(date_[:4]) if date_[:4].isdigit() else None,
         overview=(r.get("overview") or "")[:300], poster_path=r.get("poster_path"),
-        backdrop_path=r.get("backdrop_path"), rating=float(r.get("vote_average") or 0))
+        backdrop_path=r.get("backdrop_path"), rating=float(r.get("vote_average") or 0),
+        genre_ids=[int(g) for g in r.get("genre_ids") or []], released=released)
 
 
 def _excluded(s: Session, plex_id: int) -> set[tuple[int, str]]:
@@ -133,9 +155,9 @@ def candidates(s: Session, tmdb: TMDBClient, plex_id: int, seeds: list[Seed],
     pool: dict[tuple[int, str], Candidate] = {}
     top = max((x.weight for x in seeds), default=1.0)
 
-    def consider(r: dict, media_type: str) -> Candidate | None:
+    def consider(r: dict, media_type: str, min_votes: int = MIN_VOTES) -> Candidate | None:
         key = (r.get("id"), media_type)
-        if not r.get("id") or key in excluded or r.get("adult") or (r.get("vote_count") or 0) < MIN_VOTES:
+        if not r.get("id") or key in excluded or r.get("adult") or (r.get("vote_count") or 0) < min_votes:
             return None
         if key not in pool:
             pool[key] = _candidate(r, media_type)
@@ -150,9 +172,10 @@ def candidates(s: Session, tmdb: TMDBClient, plex_id: int, seeds: list[Seed],
                 c.because[seed.name] = c.because.get(seed.name, 0) + gain
     for media_type, results in trending.items():
         for rank, r in enumerate(results[:20]):
-            c = consider(r, media_type)
+            c = consider(r, media_type, TRENDING_MIN_VOTES)
             if c is not None:
                 c.trending = True
+                c.trend_rank = rank
                 c.score += TRENDING_WEIGHT * top / math.sqrt(rank + 1)
     for c in pool.values():
         c.score *= 0.6 + 0.4 * (c.rating / 10)
@@ -214,6 +237,67 @@ def rerank(seeds: list[Seed], shortlist: list[Candidate]) -> list[tuple[Candidat
     return picked[:KEEP]
 
 
+def genre_profile(pool: list[Candidate]) -> dict[int, float]:
+    """Genre → 0..1 affinity, from everything TMDB recommended off their seeds, weighted by how
+    strongly. It covers movies and shows alike (our own Title rows only have TV genres)."""
+    weight: dict[int, float] = defaultdict(float)
+    for c in pool:
+        fit = sum(c.because.values())
+        for g in c.genre_ids:
+            weight[g] += fit
+    top = max(weight.values(), default=0.0)
+    return {g: w / top for g, w in weight.items()} if top else {}
+
+
+def freshness(c: Candidate, today: date) -> float:
+    if c.released is None:
+        return STALE_FLOOR[c.media_type]
+    age = (today - c.released).days
+    if age <= FRESH_DAYS:
+        return 1.0  # also anything not out yet
+    floor = STALE_FLOOR[c.media_type]
+    return max(floor, 1 - (1 - floor) * (age - FRESH_DAYS) / (STALE_DAYS - FRESH_DAYS))
+
+
+def trending_for(pool: list[Candidate], skip: set[tuple[int, str]],
+                 today: date | None = None) -> list[tuple[Candidate, float, str]]:
+    """This week's trending titles, best for them first: buzz × freshness × fit.
+
+    `pool` is `candidates()` output (already without anything they've seen or rejected);
+    `skip` is the picks the home page shows, so the two rails never repeat. Only those: the
+    best trending fits are often picks too, and skipping all 20 would hollow the rail out."""
+    today = today or utcnow().date()
+    profile = genre_profile(pool)
+    top_direct = max((sum(c.because.values()) for c in pool), default=0.0) or 1.0
+    out = []
+    for c in pool:
+        if c.trend_rank is None or (c.tmdb_id, c.media_type) in skip:
+            continue
+        buzz = 1 / math.sqrt(c.trend_rank + 1)
+        if profile:
+            genres = [profile.get(g, 0.0) for g in c.genre_ids]
+            genre_fit = sum(genres) / len(genres) if genres else 0.5
+            fit = MISFIT_FLOOR + (1 - MISFIT_FLOOR) * genre_fit
+            fit += 0.5 * min(1.0, sum(c.because.values()) / top_direct)
+        else:
+            fit = 1.0  # too little history to judge: plain buzz × freshness
+        fresh = freshness(c, today)
+        score = buzz * fresh * fit * (0.6 + 0.4 * c.rating / 10)
+        out.append((c, score, trending_reason(c, fresh == 1.0, today)))
+    out.sort(key=lambda x: -x[1])
+    return out[:TRENDING_KEEP]
+
+
+def trending_reason(c: Candidate, fresh: bool, today: date) -> str:
+    parts = [f"#{c.trend_rank + 1} in {'TV' if c.media_type == 'tv' else 'movies'} this week"]
+    names = _because(c)
+    if names:
+        parts.append(f"like {names[0]}")
+    elif fresh:
+        parts.append("just out" if c.released and c.released <= today else "coming soon")
+    return " · ".join(parts)
+
+
 def build_for(s: Session, tmdb: TMDBClient, plex_id: int,
               trending: dict[str, list[dict]]) -> int:
     seeds = seeds_for(s, plex_id)
@@ -236,6 +320,14 @@ def build_for(s: Session, tmdb: TMDBClient, plex_id: int,
             score=round(c.score, 4), title=c.title, year=c.year, poster_path=c.poster_path,
             backdrop_path=c.backdrop_path, overview=c.overview, reason=reason,
             because=_because(c), trending=c.trending,
+            in_library=(c.tmdb_id, c.media_type) in library, generated_at=now))
+    s.execute(delete(TrendingPick).where(TrendingPick.plex_id == plex_id))
+    for rank, (c, score, reason) in enumerate(
+            trending_for(ranked, {(c.tmdb_id, c.media_type) for c, _ in picked[:HOME_PICKS]}), 1):
+        s.add(TrendingPick(
+            plex_id=plex_id, tmdb_id=c.tmdb_id, media_type=c.media_type, rank=rank,
+            score=round(score, 4), title=c.title, year=c.year, poster_path=c.poster_path,
+            backdrop_path=c.backdrop_path, overview=c.overview, reason=reason,
             in_library=(c.tmdb_id, c.media_type) in library, generated_at=now))
     s.flush()
     return len(picked)
@@ -272,6 +364,18 @@ def for_user(s: Session, plex_id: int, media: str = "any", limit: int = 20) -> l
     } for r in rows]
 
 
+def trending_for_user(s: Session, plex_id: int, limit: int = 20) -> list[dict]:
+    rows = list(s.scalars(select(TrendingPick).where(TrendingPick.plex_id == plex_id)
+                          .order_by(TrendingPick.rank).limit(limit)))
+    scores = lookup(s, [(r.tmdb_id, r.media_type) for r in rows])
+    return [{
+        "tmdb_id": r.tmdb_id, "media_type": r.media_type, "title": r.title, "year": r.year,
+        "reason": r.reason, "because": [], "trending": True, "in_library": r.in_library,
+        "poster_path": r.poster_path, "backdrop_path": r.backdrop_path, "overview": r.overview,
+        "ratings": scores.get((r.tmdb_id, r.media_type)),
+    } for r in rows]
+
+
 def give_feedback(s: Session, plex_id: int, tmdb_id: int, media_type: str, value: int) -> dict:
     """value: +1, -1, or 0 to clear. A thumbs down also drops it from their current list."""
     f = s.get(Feedback, (plex_id, tmdb_id, media_type))
@@ -286,5 +390,7 @@ def give_feedback(s: Session, plex_id: int, tmdb_id: int, media_type: str, value
         f.value = value
     if value < 0 and rec is not None:
         s.delete(rec)
+    if value < 0 and (hot := s.get(TrendingPick, (plex_id, tmdb_id, media_type))) is not None:
+        s.delete(hot)
     s.flush()
     return {"ok": True, "value": value}

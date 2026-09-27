@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ArrowRight, CalendarClock } from "lucide-react";
 import { useBackdrop } from "@/components/backdrop";
-import { Chip, EpisodeCard, EventRow, PickCard, Rail, Section, Skeleton, Empty, UndatedChip } from "@/components/ui";
+import { Chip, EpisodeCard, EventRow, PickCard, Rail, Section, Skeleton, Empty } from "@/components/ui";
 import { backdrop, epLabel, fmtDate, relDay, useApi, type Home, type Me } from "@/lib/api";
 
 function Hero({ data }: { data: Home }) {
@@ -91,13 +91,13 @@ export default function HomePage() {
           )}
       </Section>
 
-      {data.renewed_no_date.length > 0 && (
-        <Section title="Renewed · date TBA">
-          <div className="undated-grid">
-            {data.renewed_no_date.map((u) => (
-              <UndatedChip key={`${u.tmdb_id}-${u.season}`} item={u} />
+      {data.trending.length > 0 && (
+        <Section title="Trending">
+          <Rail label="Trending">
+            {data.trending.map((p) => (
+              <PickCard key={`${p.media_type}-${p.tmdb_id}`} pick={p} canRequest={me?.can_request} compact trendingBadge={false} />
             ))}
-          </div>
+          </Rail>
         </Section>
       )}
 

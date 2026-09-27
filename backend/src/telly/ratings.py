@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from .clients.tmdb import TMDBClient
 from .config import get_settings
-from .models import Follow, Rating, Recommendation, Title, User, aware, utcnow
+from .models import Follow, Rating, Recommendation, Title, TrendingPick, User, aware, utcnow
 
 log = logging.getLogger(__name__)
 
@@ -108,6 +108,7 @@ def targets(s: Session) -> list[tuple[int, str]]:
     followed = {(t, "tv") for t in s.scalars(select(Follow.tmdb_id).where(
         Follow.state == "following", Follow.plex_id.in_(active)))}
     picked = set(s.execute(select(Recommendation.tmdb_id, Recommendation.media_type)).all())
+    picked |= set(s.execute(select(TrendingPick.tmdb_id, TrendingPick.media_type)).all())
     return sorted(followed | {(int(a), b) for a, b in picked})
 
 

@@ -158,10 +158,10 @@ def home(pid: int = Me) -> dict:
     with session_scope() as s:
         timeline = shows.upcoming(s, pid, days=30)
         news = shows.whats_new(s, pid, days=30)[:12]
-        picks = recs.for_user(s, pid, limit=12)
+        picks = recs.for_user(s, pid, limit=recs.HOME_PICKS)
         hero = (timeline["dated"][0] if timeline["dated"] else None)
         return {"hero": hero, "airing_soon": timeline["dated"][:10], "whats_new": news,
-                "for_you": picks, "renewed_no_date": timeline["renewed_no_date"]}
+                "for_you": picks, "trending": recs.trending_for_user(s, pid)}
 
 
 @router.get("/timeline")

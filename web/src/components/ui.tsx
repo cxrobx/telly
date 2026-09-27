@@ -154,11 +154,13 @@ export function PickCard({
   canRequest,
   onRated,
   compact = false,
+  trendingBadge = true,
 }: {
   pick: Pick;
   canRequest?: boolean;
   onRated?: (value: -1 | 1) => void;
   compact?: boolean;
+  trendingBadge?: boolean; // off in the Trending rail, where every card would carry it
 }) {
   const [rated, setRated] = useState<0 | 1 | -1>(0);
   const [leaving, setLeaving] = useState(false);
@@ -193,7 +195,7 @@ export function PickCard({
             <Library size={12} /> On Plex
           </Chip>
         )}
-        {pick.trending && (
+        {pick.trending && trendingBadge && (
           <Chip tone="accent">
             <TrendingUp size={12} /> Trending
           </Chip>

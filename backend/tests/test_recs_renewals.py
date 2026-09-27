@@ -126,6 +126,73 @@ def test_build_all_keeps_people_separate(people, monkeypatch):
     assert "For A" in a and "For A" not in b and b == {"For Both"}
 
 
+# ── trending ─────────────────────────────────────────────────────────────
+
+CRIME, DRAMA, KIDS, ANIM = 80, 18, 10762, 16
+
+
+def hot(id_, title, days_old, genres, votes=500, rating=7.5):
+    return rec(id_, title, votes=votes, rating=rating, genre_ids=genres,
+               first_air_date=(NOW.date() - timedelta(days=days_old)).isoformat())
+
+
+def _trending(people, by_seed, trending):
+    tmdb = FakeTMDB(by_seed, trending={"tv": trending})
+    pool = recs.candidates(people, tmdb, A, recs.seeds_for(people, A, now=NOW), tmdb._trending)
+    return pool
+
+
+def test_trending_puts_fresh_fitting_titles_above_bigger_stale_or_misfit_ones(people):
+    # their seeds' neighborhood is crime drama
+    by_seed = {("tv", 1): [hot(60 + i, f"Crime {i}", 900, [CRIME, DRAMA]) for i in range(5)]}
+    pool = _trending(people, by_seed, [
+        hot(71, "Kids Cartoon", 10, [KIDS, ANIM]),        # #1 this week, brand new, nothing like them
+        hot(70, "Big Old Hit", 3000, [CRIME, DRAMA]),     # #2, their kind of thing, but a 2018 show
+        hot(72, "New Crime Show", 20, [CRIME, DRAMA]),    # #3, new, their kind of thing
+        hot(73, "Tiny Premiere", 5, [CRIME], votes=15),   # too new for the 50-vote floor
+    ])
+    got = [c.title for c, _, _ in recs.trending_for(pool, set(), today=NOW.date())]
+    assert got[0] == "New Crime Show"
+    assert got.index("Big Old Hit") < got.index("Kids Cartoon")
+    assert "Kids Cartoon" in got and "Tiny Premiere" in got  # a misfit sinks, it isn't hidden
+    reasons = {c.title: r for c, _, r in recs.trending_for(pool, set(), today=NOW.date())}
+    assert reasons["New Crime Show"] == "#3 in TV this week · just out"
+
+
+def test_trending_names_a_direct_match_and_skips_picks_and_seen(people):
+    people.add(Follow(plex_id=A, tmdb_id=81, source="manual"))
+    people.commit()
+    by_seed = {("tv", 1): [hot(80, "Also Recommended", 30, [CRIME])]}
+    pool = _trending(people, by_seed, [hot(80, "Also Recommended", 30, [CRIME]),
+                                       hot(81, "Followed", 30, [CRIME]),
+                                       hot(82, "Already A Pick", 30, [CRIME])])
+    out = recs.trending_for(pool, {(82, "tv")}, today=NOW.date())
+    assert [c.title for c, _, _ in out] == ["Also Recommended"]
+    assert out[0][2] == "#1 in TV this week · like Recent Show"
+
+
+def test_trending_without_history_is_buzz_times_freshness():
+    old = recs.Candidate(1, "movie", "Old", 2010, "", None, None, 7.0, trend_rank=0,
+                         released=NOW.date() - timedelta(days=4000))
+    new = recs.Candidate(2, "movie", "New", 2026, "", None, None, 7.0, trend_rank=1,
+                         released=NOW.date() - timedelta(days=7))
+    assert [c.title for c, _, _ in recs.trending_for([old, new], set(), today=NOW.date())] == ["New", "Old"]
+
+
+def test_build_stores_trending_that_never_repeats_a_home_pick(people, monkeypatch):
+    monkeypatch.setattr(llm, "available", lambda: False)
+    tmdb = FakeTMDB({("tv", 1): [rec(90, "Pick And Trending")]},
+                    trending={"tv": [rec(90, "Pick And Trending"), rec(91, "Only Trending")]})
+    monkeypatch.setattr(recs, "HOME_PICKS", 1)  # the home page shows only the top pick
+    recs.build_for(people, tmdb, A, tmdb._trending)
+    picks = [p["title"] for p in recs.for_user(people, A)]
+    trend = [p["title"] for p in recs.trending_for_user(people, A)]
+    assert picks[0] == "Pick And Trending" and trend == ["Only Trending"]
+    assert recs.trending_for_user(people, B) == []
+    recs.give_feedback(people, A, 91, "tv", -1)  # not for me → gone from the rail too
+    assert recs.trending_for_user(people, A) == []
+
+
 # ── renewals ─────────────────────────────────────────────────────────────
 
 
