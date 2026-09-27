@@ -82,7 +82,7 @@ Verify UI changes with Playwright at 1440 and 390 (no horizontal overflow on any
 **plexbot's chat is embedded** (`components/plexbot.tsx`): a floating button → plexbot's own
 `chat.html` in an iframe (full screen on phones), token minted on load and re-minted on open near
 its 1 h expiry. plex-agent's `static/chat.js` must list `https://telly.chrisx.art` in
-`ALLOWED_PARENT_ORIGINS`, or the frame shows "access denied". The frame passes `theme=telly`: plexbot's `chat.html`/`chat.css` then draw on a transparent page in Telly's look, so `.plexbot-panel` is the chat's surface (frosted glass). Bump `chat.js?v=`/`chat.css?v=` in plexbot's `chat.html` on any change there: browsers cache them 4 h.
+`ALLOWED_PARENT_ORIGINS`, or the frame shows "access denied". plexbot's chat draws in Telly's glass look on a transparent page (in Overseerr too), so `.plexbot-panel` is its surface (frosted glass); `theme=telly` renames it to Telly. Bump `chat.js?v=`/`chat.css?v=` in plexbot's `chat.html` on any change there: browsers cache them 4 h.
 
 ## Deploy (NAS)
 
