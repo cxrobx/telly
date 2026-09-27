@@ -183,7 +183,7 @@ def following(pid: int = Me) -> dict:
 
 
 @router.get("/recs")
-def recommendations(media: Literal["any", "tv", "movie"] = "any", pid: int = Me) -> dict:
+def recommendations(media: Literal["any", "tv", "movie", "anime"] = "any", pid: int = Me) -> dict:
     with session_scope() as s:
         return {"picks": recs.for_user(s, pid, media=media, limit=40)}
 

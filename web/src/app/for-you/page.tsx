@@ -11,6 +11,7 @@ const FILTERS = [
   { key: "any", label: "Everything" },
   { key: "tv", label: "Shows" },
   { key: "movie", label: "Movies" },
+  { key: "anime", label: "Anime" },
 ] as const;
 
 // "Best match" is Telly's own order (fit with your history, reranked by Haiku). The rest sort

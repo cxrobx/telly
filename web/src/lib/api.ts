@@ -49,6 +49,7 @@ export type Pick = {
   because: string[];
   trending: boolean;
   in_library: boolean;
+  anime?: boolean;
   poster_path: string | null;
   backdrop_path: string | null;
   overview: string;

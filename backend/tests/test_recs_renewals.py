@@ -126,6 +126,18 @@ def test_build_all_keeps_people_separate(people, monkeypatch):
     assert "For A" in a and "For A" not in b and b == {"For Both"}
 
 
+def test_anime_is_japanese_animation_and_filters_shows_and_movies(people, monkeypatch):
+    monkeypatch.setattr(llm, "available", lambda: False)
+    tmdb = FakeTMDB({("tv", 1): [rec(50, "Jujutsu", genre_ids=[16, 10759], original_language="ja"),
+                                 rec(51, "Arcane", genre_ids=[16], original_language="en"),
+                                 rec(52, "Drama", genre_ids=[18], original_language="ja")],
+                     ("movie", 3): [{**rec(53, "Spirited Away", genre_ids=[16], original_language="ja"),
+                                     "title": "Spirited Away"}]})
+    recs.build_for(people, tmdb, A, {})
+    assert {p["title"] for p in recs.for_user(people, A, media="anime")} == {"Jujutsu", "Spirited Away"}
+    assert len(recs.for_user(people, A)) == 4
+
+
 # ── trending ─────────────────────────────────────────────────────────────
 
 CRIME, DRAMA, KIDS, ANIM = 80, 18, 10762, 16

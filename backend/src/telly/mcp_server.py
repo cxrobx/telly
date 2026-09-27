@@ -137,9 +137,10 @@ async def alert_settings(ctx: Context, phone_alerts: bool | None = None,
 @mcp.tool()
 async def recommend(ctx: Context, media: str = "any", limit: int = 8) -> str:
     """What the caller should watch next, from their own Plex history plus what's trending,
-    each with a one-line reason. media: "any", "tv" or "movie". in_library=true means it's
-    already on the Plex server; otherwise it can be requested in Overseerr."""
-    media = media if media in ("tv", "movie") else "any"
+    each with a one-line reason. media: "any", "tv", "movie" or "anime" (Japanese animation,
+    shows and movies). in_library=true means it's already on the Plex server; otherwise it can
+    be requested in Overseerr."""
+    media = media if media in ("tv", "movie", "anime") else "any"
     return await _run(ctx, lambda s, pid: {"picks": recs.for_user(s, pid, media, min(limit, 20))})
 
 

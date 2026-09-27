@@ -220,6 +220,7 @@ class Recommendation(Base):
     because: Mapped[list] = mapped_column(JSON, default=list)  # seed titles
     trending: Mapped[bool] = mapped_column(default=False)
     in_library: Mapped[bool] = mapped_column(default=False)
+    anime: Mapped[bool] = mapped_column(default=False, server_default="0")  # recs.is_anime
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

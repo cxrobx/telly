@@ -44,6 +44,7 @@ MIN_VOTES = 50
 SHORTLIST = 40
 KEEP = 20
 TRENDING_WEIGHT = 0.35
+ANIMATION = 16  # TMDB genre id, the same for TV and movies
 TRENDING_MIN_VOTES = 10  # this week's premieres haven't had time to collect 50
 TRENDING_KEEP = 20
 HOME_PICKS = 10  # the For you rail on the home page; trending never repeats one of these
@@ -78,6 +79,7 @@ class Candidate:
     genre_ids: list[int] = field(default_factory=list)
     released: date | None = None
     trend_rank: int | None = None  # 0-based, within its media type's trending list
+    anime: bool = False
 
 
 def seeds_for(s: Session, plex_id: int, now: datetime | None = None) -> list[Seed]:
@@ -132,7 +134,14 @@ def _candidate(r: dict, media_type: str) -> Candidate:
         year=int(date_[:4]) if date_[:4].isdigit() else None,
         overview=(r.get("overview") or "")[:300], poster_path=r.get("poster_path"),
         backdrop_path=r.get("backdrop_path"), rating=float(r.get("vote_average") or 0),
-        genre_ids=[int(g) for g in r.get("genre_ids") or []], released=released)
+        genre_ids=[int(g) for g in r.get("genre_ids") or []], released=released,
+        anime=is_anime(r))
+
+
+def is_anime(r: dict) -> bool:
+    """Japanese animation: TMDB has no anime genre, so Animation + Japanese origin."""
+    return ANIMATION in (r.get("genre_ids") or []) and (
+        r.get("original_language") == "ja" or "JP" in (r.get("origin_country") or []))
 
 
 def _excluded(s: Session, plex_id: int) -> set[tuple[int, str]]:
@@ -319,7 +328,7 @@ def build_for(s: Session, tmdb: TMDBClient, plex_id: int,
             plex_id=plex_id, tmdb_id=c.tmdb_id, media_type=c.media_type, rank=rank,
             score=round(c.score, 4), title=c.title, year=c.year, poster_path=c.poster_path,
             backdrop_path=c.backdrop_path, overview=c.overview, reason=reason,
-            because=_because(c), trending=c.trending,
+            because=_because(c), trending=c.trending, anime=c.anime,
             in_library=(c.tmdb_id, c.media_type) in library, generated_at=now))
     s.execute(delete(TrendingPick).where(TrendingPick.plex_id == plex_id))
     for rank, (c, score, reason) in enumerate(
@@ -353,12 +362,14 @@ def for_user(s: Session, plex_id: int, media: str = "any", limit: int = 20) -> l
     q = select(Recommendation).where(Recommendation.plex_id == plex_id)
     if media in ("tv", "movie"):
         q = q.where(Recommendation.media_type == media)
+    elif media == "anime":  # shows and movies alike
+        q = q.where(Recommendation.anime.is_(True))
     rows = list(s.scalars(q.order_by(Recommendation.rank).limit(limit)))
     scores = lookup(s, [(r.tmdb_id, r.media_type) for r in rows])
     return [{
         "tmdb_id": r.tmdb_id, "media_type": r.media_type, "title": r.title, "year": r.year,
         "reason": r.reason, "because": r.because, "trending": r.trending,
-        "in_library": r.in_library, "poster_path": r.poster_path,
+        "in_library": r.in_library, "anime": r.anime, "poster_path": r.poster_path,
         "backdrop_path": r.backdrop_path, "overview": r.overview,
         "ratings": scores.get((r.tmdb_id, r.media_type)),
     } for r in rows]
