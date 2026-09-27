@@ -143,16 +143,20 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .plexbot-panel {
   position: fixed; right: 24px; bottom: calc(92px + env(safe-area-inset-bottom)); z-index: 40;
   width: 400px; height: min(640px, calc(100dvh - 180px)); overflow: hidden; border-radius: var(--r-lg);
-  background: #111118; transform-origin: bottom right;
+  /* the chat inside is transparent (theme=telly), so this is its surface: dark frosted glass */
+  background: linear-gradient(180deg, rgba(24, 24, 32, 0.8), rgba(12, 12, 18, 0.86));
+  -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+  transform-origin: bottom right;
   transition: opacity 0.22s var(--ease), transform 0.28s var(--ease), visibility 0s linear 0.28s;
 }
 .plexbot-panel[data-open="false"] { opacity: 0; transform: translateY(10px) scale(0.97); visibility: hidden; }
 .plexbot-panel[data-open="true"] { transition-delay: 0s; }
-.plexbot-panel iframe { display: block; width: 100%; height: 100%; border: 0; }
+.plexbot-panel iframe { display: block; width: 100%; height: 100%; border: 0; background: transparent; color-scheme: dark; }
 @media (max-width: 767px) {
   .plexbot-fab { right: 18px; bottom: calc(92px + env(safe-area-inset-bottom)); width: 50px; height: 50px; }
   /* Full screen; the chat's own ✕ closes it. */
-  .plexbot-panel { inset: 0; width: auto; height: auto; border-radius: 0; border: 0; z-index: 50; padding-top: env(safe-area-inset-top); }
+  .plexbot-panel { inset: 0; width: auto; height: auto; border-radius: 0; border: 0; z-index: 50; padding-top: env(safe-area-inset-top);
+    background: linear-gradient(180deg, rgba(14, 14, 20, 0.86), rgba(7, 7, 11, 0.92)); }
   .plexbot-fab[data-open="true"] { display: none; }
 }
 

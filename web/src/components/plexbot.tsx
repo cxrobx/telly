@@ -22,7 +22,9 @@ async function fetchGrant(): Promise<Grant | null> {
 }
 
 function chatSrc(g: Grant) {
-  const params = new URLSearchParams({ token: g.token, userId: g.id, displayName: g.name });
+  // theme=telly: plexbot's chat.html draws in Telly's look on a transparent page, so this
+  // panel's glass shows through (the Overseerr widget keeps its own look).
+  const params = new URLSearchParams({ token: g.token, userId: g.id, displayName: g.name, theme: "telly" });
   return `${g.chat_url}${g.chat_url.includes("?") ? "&" : "?"}${params}`;
 }
 
