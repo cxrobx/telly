@@ -1,0 +1,32 @@
+#!/bin/zsh
+# Ask Telly a question as yourself, the way plexbot will: claude -p + Telly's MCP.
+#   scripts/ask "what's coming up for me?"
+# TELLY_AS=web:1 (default) is Chris's Overseerr id; discord:<id> tests a Discord identity.
+# Starts a local Telly (scheduler off) on :8940 if one isn't running.
+set -e
+ROOT=${0:A:h:h}
+URL=${TELLY_URL:-http://localhost:8940}
+AS=${TELLY_AS:-web:1}
+
+if ! curl -sf "$URL/health" >/dev/null 2>&1; then
+  echo "starting Telly on :8940…" >&2
+  (cd "$ROOT/backend" && TELLY_SCHEDULER_ENABLED=false nohup uv run telly serve --port 8940 \
+      > "$ROOT/backend/data/serve.log" 2>&1 &)
+  for _ in {1..20}; do curl -sf "$URL/health" >/dev/null 2>&1 && break; sleep 0.5; done
+fi
+
+CFG=$(mktemp -t telly-mcp).json
+trap 'rm -f "$CFG"' EXIT
+print -r -- '{"mcpServers":{"telly":{"type":"http","url":"'"$URL"'/mcp","headers":{"Authorization":"Bearer ${TELLY_REQUESTER_TOKEN:-none}"}}}}' > "$CFG"
+
+# The token is minted inside `secret run`, so the shared secret never touches argv or this shell.
+secret run -k TELLY_SHARED_SECRET -- zsh -c '
+  export TELLY_REQUESTER_TOKEN=$(cd "$1/backend" && uv run python -c "
+import os, sys
+from telly.requester import mint
+surface, uid = sys.argv[1].split(\":\", 1)
+print(mint(surface, uid, \"ask\", secret=os.environ[\"TELLY_SHARED_SECRET\"]))" "$2")
+  exec claude -p "$3" --strict-mcp-config --mcp-config "$4" --allowedTools "mcp__telly__*" \
+    --append-system-prompt "You are PlexBot answering from Telly. Use the telly tools; be concise and friendly." \
+    < /dev/null
+' _ "$ROOT" "$AS" "$*" "$CFG"

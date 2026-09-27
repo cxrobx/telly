@@ -1,0 +1,38 @@
+# Telly on the NAS: /volume2/docker/telly/ holds this file, src/ (the committed tree, from
+# scripts/deploy.sh), data/ (SQLite) and .env (secrets, never in git).
+#
+# Ports: 18940 = API (LAN only; plexbot reaches /mcp here). 18941 = web, the only thing the
+# Cloudflare tunnel routes to (telly.chrisx.art), and it proxies /api/* alone.
+services:
+  telly-api:
+    build: ./src/backend
+    container_name: telly-api
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "18940:8940"
+    volumes:
+      - ./data:/app/data
+    mem_limit: 768m
+    memswap_limit: 768m
+    networks: [telly]
+
+  telly-web:
+    build:
+      context: ./src/web
+      args:
+        TELLY_API_URL: http://telly-api:8940
+    container_name: telly-web
+    restart: unless-stopped
+    ports:
+      - "18941:3000"
+    depends_on: [telly-api]
+    mem_limit: 384m
+    memswap_limit: 384m
+    networks: [telly]
+
+networks:
+  telly:
+    ipam:
+      config:
+        - subnet: 10.230.0.0/24  # pinned: the NAS's default pools are exhausted (see deploy-nas)
