@@ -305,7 +305,9 @@ def pick_title(results: list[dict], known: set[tuple[int, str]], title: str,
         return {"pick": None, "candidates": []}
     want = _norm(title)
     exact = [c for c in out if _norm(c["name"]) == want]
-    watched = [c for c in out if c["watched"]]
+    # Watched wins only when its name contains what they typed: "daredevil" → Daredevil: Born
+    # Again if that's what they watch, but "game of thrones" must never become House of the Dragon.
+    watched = [c for c in out if c["watched"] and want in _norm(c["name"])]
     if watched:
         pick = next((c for c in watched if _norm(c["name"]) == want), watched[0])
     elif len(exact) == 1 or (exact and year is not None):

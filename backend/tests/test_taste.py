@@ -217,3 +217,9 @@ def test_record_likes_as_told_and_dislikes_as_a_thumbs_down(two):
     taste.record(s, FakeTMDB(), A, 9480, "movie", False)
     assert s.get(TasteSignal, (A, 9480, "movie", "told")) is None
     assert (9480, "movie") in recs._excluded(s, A)
+
+
+def test_a_watched_spinoff_never_stands_in_for_the_show_they_named():
+    got = [{"id": 94997, "media_type": "tv", "name": "House of the Dragon", "first_air_date": "2022-08-21"},
+           {"id": 1399, "media_type": "tv", "name": "Game of Thrones", "first_air_date": "2011-04-17"}]
+    assert taste.pick_title(got, {(94997, "tv")}, "Game of Thrones")["pick"]["tmdb_id"] == 1399
