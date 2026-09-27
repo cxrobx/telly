@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     llm_enabled: bool = True
     llm_model: str = "haiku"
 
-    # Outside scores (ratings.py). OMDb: IMDb for everything, RT for movies. MDBList: RT for series.
+    # Outside scores (ratings.py). OMDb: IMDb for everything, RT for movies. MDBList: RT for series, and IMDb when OMDb has none yet.
     omdb_api_key: str = ""
     mdblist_api_key: str = ""
 

@@ -92,7 +92,7 @@ def run_ratings(force: bool = False) -> ratings.RatingsReport:
     if not get_settings().omdb_api_key:
         log.info("ratings skipped: no OMDb key")
         return ratings.RatingsReport()
-    rt = ratings.MDBList().rt if get_settings().mdblist_api_key else None
+    rt = ratings.MDBList().scores if get_settings().mdblist_api_key else None
     with session_scope() as s:
         report = ratings.refresh(s, TMDBClient(), ratings.OMDb(), rt_source=rt, force=force)
     log.info("ratings: %s", report)
