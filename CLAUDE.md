@@ -7,6 +7,8 @@ history + what's trending; and an MCP that plexbot (`~/Projects/plex-agent`) con
 **Live at https://telly.chrisx.art** (NAS, since 2026-09-27). plexbot uses its MCP in #plexbot
 and in the Overseerr widget.
 
+**The repo is PUBLIC** (github.com/cxrobx/telly, since 2026-09-27, one squashed commit; the earlier private history is `~/Archives/telly-private-history-2026-09-27.bundle`). Never commit a member's username, name, Plex or Discord id, or anything from the prod DB: tests use made-up ids. Scan before pushing: `gitleaks git . --redact`.
+
 **Read `docs/spec-identity.md` before touching auth, users, the MCP, or alerts.** It's the
 approved identity/access spec: identity is the plex.tv account id, and no MCP tool or web
 route takes a user parameter.
