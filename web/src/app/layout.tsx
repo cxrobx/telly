@@ -1,10 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Instrument_Serif } from "next/font/google";
+import { Geist, Poppins } from "next/font/google";
 import { Shell } from "@/components/shell";
 import "./globals.css";
 
 const sans = Geist({ variable: "--font-sans", subsets: ["latin"] });
-const display = Instrument_Serif({ variable: "--font-display", weight: "400", subsets: ["latin"] });
+const display = Poppins({ variable: "--font-display", weight: ["600", "700"], subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Telly",
