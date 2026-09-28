@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarRange, Home, Search, Settings, Sparkles, Tv } from "lucide-react";
+import { CalendarRange, History, Home, Search, Settings, Sparkles, Tv } from "lucide-react";
 import { BackdropProvider } from "./backdrop";
 import { PlexbotChat } from "./plexbot";
 
@@ -11,6 +11,7 @@ const TABS = [
   { href: "/timeline", label: "Timeline", icon: CalendarRange },
   { href: "/for-you", label: "For You", icon: Sparkles },
   { href: "/following", label: "Following", icon: Tv },
+  { href: "/history", label: "History", icon: History },
 ];
 
 const PUBLIC = ["/signin", "/link"];

@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 import pytest
 from sqlalchemy import select
 
-from telly import recs, taste
-from telly.models import ImdbRow, Play, TasteSignal, Title, User
+from telly import history, recs, taste
+from telly.models import ImdbRow, Play, TasteSignal, Title, User, WatchEntry
 
 A, B = 111, 222
 
@@ -130,10 +130,10 @@ def test_told_is_foundational_but_a_request_is_only_weak_interest(two):
     s = two
     _watched(s, A, 50, 3)                                     # three episodes watched on Plex
     taste.add(s, A, 1438, "tv", "overseerr", "The Wire")      # requested, maybe for a friend
-    taste.add(s, A, 60625, "tv", "told", "Rick and Morty")    # "I loved it"
+    taste.record(s, FakeTMDB(), A, 60625, "tv", True)         # "I liked it"
     s.commit()
     w = {x.name: x.weight for x in recs.seeds_for(s, A)}
-    assert w["Rick and Morty"] >= w["Watched 50"] > w["The Wire"] > 0
+    assert w["Show 60625"] >= w["Watched 50"] * recs.LIKED > w["The Wire"] > 0
 
 
 def test_switching_a_title_off_drops_it_from_taste_but_never_recommends_it_back(two):
@@ -151,12 +151,12 @@ def test_switching_a_title_off_drops_it_from_taste_but_never_recommends_it_back(
 
 def test_listing_groups_sources_per_title_strongest_first(two):
     s = two
+    taste.add(s, A, 1438, "tv", "mentioned", "The Wire")
     taste.add(s, A, 1438, "tv", "overseerr", "The Wire")
-    taste.add(s, A, 1438, "tv", "told", "The Wire")
     taste.add(s, A, 5, "movie", "mentioned", "Live by Night")
     s.commit()
     items = taste.listing(s, A)
-    assert [(i["title"], i["sources"]) for i in items] == [("The Wire", ["told", "overseerr"]),
+    assert [(i["title"], i["sources"]) for i in items] == [("The Wire", ["overseerr", "mentioned"]),
                                                            ("Live by Night", ["mentioned"])]
 
 
@@ -205,18 +205,23 @@ def test_known_keys_are_plays_and_taste(two):
     s = two
     s.add(Play(history_key="h1", plex_id=A, media_type="tv", tmdb_id=61889, rating_key="r",
                viewed_at=datetime(2026, 1, 1, tzinfo=timezone.utc)))
-    taste.add(s, A, 9480, "movie", "told", "Daredevil")
-    assert taste.known_keys(s, A) == {(61889, "tv"), (9480, "movie")}
+    history.add(s, FakeTMDB(), A, 9480, "movie")
+    taste.add(s, A, 5, "movie", "mentioned", "Live by Night")
+    assert taste.known_keys(s, A) == {(61889, "tv"), (9480, "movie"), (5, "movie")}
     assert taste.known_keys(s, B) == set()
 
 
-def test_record_likes_as_told_and_dislikes_as_a_thumbs_down(two):
+def test_record_goes_on_history_as_liked_loved_or_not_for_me(two):
     s = two
     assert taste.record(s, FakeTMDB(), A, 61889, "tv", True)["title"] == "Show 61889"
-    assert s.get(TasteSignal, (A, 61889, "tv", "told")) is not None
+    assert s.get(WatchEntry, (A, 61889, "tv")).rating == 1
+    assert taste.record(s, FakeTMDB(), A, 61889, "tv", True, loved=True)["rating"] == "loved"
+    assert taste.record(s, FakeTMDB(), A, 61889, "tv", True)["rating"] == "loved"  # never downgraded
     taste.record(s, FakeTMDB(), A, 9480, "movie", False)
-    assert s.get(TasteSignal, (A, 9480, "movie", "told")) is None
+    assert s.get(WatchEntry, (A, 9480, "movie")).rating == -1
     assert (9480, "movie") in recs._excluded(s, A)
+    assert [n.name for n in recs.negatives_for(s, A)] == ["Movie 9480"]
+    assert s.get(TasteSignal, (A, 61889, "tv", "told")) is None  # `told` is retired
 
 
 def test_a_watched_spinoff_never_stands_in_for_the_show_they_named():

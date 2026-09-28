@@ -85,7 +85,7 @@ export default function ForYouPage() {
       <header className="page-head">
         <h1 className="page-title">For you</h1>
         <p className="page-sub">
-          Picked from what you&apos;ve watched on Plex, what you&apos;ve told Telly and your IMDb ratings, plus what&apos;s trending this week.
+          Picked from what you&apos;ve watched on Plex, how you rated it on <Link href="/history" className="inline-link">History</Link> and your IMDb ratings, plus what&apos;s trending this week.
           Thumbs up for more like it, thumbs down and it&apos;s gone. <Link href="/taste" className="inline-link">Tune your taste</Link>
         </p>
         <div className="toolbar">

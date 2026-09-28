@@ -22,7 +22,6 @@ type Item = {
 // Strongest first. Requests and chat mentions are interest, not proof of liking, so they
 // count a little and are the ones most worth switching off.
 const GROUPS: { source: string; title: string; note: string }[] = [
-  { source: "told", title: "You told Telly", note: "Counts as much as your favourite shows on Plex." },
   { source: "imdb_rating", title: "Your IMDb ratings", note: "7 and up shape your picks; 4 and under count against." },
   { source: "overseerr", title: "Requested in Overseerr", note: "Counts a little: a request can be a try-out or for a friend." },
   { source: "mentioned", title: "Came up in plexbot chats", note: "Counts a little: mostly fix-it questions, not reviews." },
@@ -72,13 +71,17 @@ export default function TastePage() {
       <header className="page-head">
         <h1 className="page-title">Your taste</h1>
         <p className="page-sub">
-          What shapes your picks. Your Plex watch history, what you tell Telly, and your IMDb ratings count most. Requests and chat
-          mentions count a little, and you can switch any title off. Changes show up in tonight&apos;s picks (your first ones are built right away).
+          What shapes your picks. Your Plex watch history, what you rate on <Link href="/history" className="inline-link">History</Link>, and
+          your IMDb ratings count most. Requests and chat mentions count a little, and you can switch any title off. Changes show up in
+          tonight&apos;s picks (your first ones are built right away).
         </p>
       </header>
 
       <Section title="Tell Telly what you liked">
         <Tell onTold={reload} />
+        <p className="muted small group-note">
+          These go on your <Link href="/history" className="inline-link">History</Link>, where you can say you loved one, too.
+        </p>
       </Section>
 
       <Section title="IMDb">

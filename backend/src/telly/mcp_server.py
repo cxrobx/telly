@@ -16,7 +16,7 @@ import anyio
 from sqlalchemy import select
 from mcp.server.mcpserver import Context, MCPServer
 
-from . import memory, recs, shows, taste
+from . import history, memory, recs, shows, taste
 from .clients.tmdb import TMDBClient
 from .config import get_settings
 from .db import session_scope
@@ -156,14 +156,20 @@ async def rate_title(ctx: Context, tmdb_id: int, media_type: str, liked: bool) -
 
 @mcp.tool()
 async def record_taste(ctx: Context, title: str, liked: bool = True, year: int | None = None,
-                       media_type: str | None = None) -> str:
+                       media_type: str | None = None, loved: bool = False,
+                       status: str | None = None) -> str:
     """The caller watched a show or movie (anywhere, not just Plex) and said whether they liked
-    it: "I loved X", "Y was mid", "finally saw Z, so good". Pass the title as they wrote it, plus
-    year or media_type (tv/movie) only if they said one. Telly finds it, preferring something
-    they've watched, and records it in one call. If the answer is `ambiguous`, ask which one
-    they meant, then call record_watched with that tmdb_id. A download request is not taste."""
+    it: "I loved X", "Y was mid", "finally saw Z, so good". It goes on their History as Loved it
+    (loved=true: "loved", "favourite", "so good"), Liked it, or Not for me (liked=false).
+    status, only if they said: watching | finished | dropped ("gave up on it"). Pass the title
+    as they wrote it, plus year or media_type (tv/movie) only if they said one. Telly finds it,
+    preferring something they've watched, and records it in one call. If the answer is
+    `ambiguous`, ask which one they meant, then call record_watched with that tmdb_id. A
+    download request is not taste."""
     if media_type not in (None, "tv", "movie"):
         return json.dumps({"error": "media_type must be tv or movie"})
+    if status not in (None, *history.STATUSES):
+        return json.dumps({"error": "status must be watching, finished or dropped"})
 
     def run(s, pid):
         tmdb = TMDBClient()
@@ -172,7 +178,8 @@ async def record_taste(ctx: Context, title: str, liked: bool = True, year: int |
             return {"ambiguous": True, "candidates": found["candidates"][:5]} if found["candidates"] \
                 else {"error": f"Nothing on TMDB matches {title!r}."}
         p = found["pick"]
-        out = _first_picks(s, pid, taste.record(s, tmdb, pid, p["tmdb_id"], p["media_type"], liked))
+        out = _first_picks(s, pid, taste.record(s, tmdb, pid, p["tmdb_id"], p["media_type"], liked,
+                                                loved, status))
         out["year"] = p["year"]
         others = [c for c in found["candidates"] if c is not p][:3]
         if others:
@@ -194,13 +201,17 @@ async def search_titles(ctx: Context, query: str) -> str:
 
 
 @mcp.tool()
-async def record_watched(ctx: Context, tmdb_id: int, media_type: str, liked: bool = True) -> str:
+async def record_watched(ctx: Context, tmdb_id: int, media_type: str, liked: bool = True,
+                         loved: bool = False, status: str | None = None) -> str:
     """Like record_taste, when you already have the tmdb_id (after record_taste came back
-    ambiguous, or to correct its pick). liked=false means never suggest anything because of it."""
+    ambiguous, or to correct its pick). liked=false is Not for me: it counts against things
+    like it."""
     if media_type not in ("tv", "movie"):
         return json.dumps({"error": "media_type must be tv or movie"})
+    if status not in (None, *history.STATUSES):
+        return json.dumps({"error": "status must be watching, finished or dropped"})
     return await _run(ctx, lambda s, pid: _first_picks(
-        s, pid, taste.record(s, TMDBClient(), pid, tmdb_id, media_type, liked)))
+        s, pid, taste.record(s, TMDBClient(), pid, tmdb_id, media_type, liked, loved, status)))
 
 
 def _first_picks(s, pid: int, out: dict) -> dict:

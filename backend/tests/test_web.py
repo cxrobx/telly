@@ -283,11 +283,14 @@ def test_imdb_upload_rejects_non_exports_and_non_json(client):
 
 def test_taste_toggle_and_told_are_the_callers_own(client, monkeypatch):
     from telly import api as api_mod, taste as taste_mod
-    monkeypatch.setattr(taste_mod, "_details", lambda s, tmdb, tid, mt: ("The Wire", "/p.jpg"))
+    monkeypatch.setattr(api_mod, "TMDBClient", lambda: type("T", (), {"tv": lambda self, i: {"name": "The Wire"}})())
     as_user(client, ALICE)
     assert client.post("/api/taste/told", json={"tmdb_id": 1438, "media_type": "tv"}).json()["liked"] is True
+    assert [(i["name"], i["rating"]) for i in client.get("/api/history").json()["items"]] == [("The Wire", "liked")]
+    with db.session_scope() as s:
+        taste_mod.add(s, ALICE, 1438, "tv", "mentioned", "The Wire")
     items = client.get("/api/taste/items").json()["items"]
-    assert [(i["title"], i["sources"], i["use_for_picks"]) for i in items] == [("The Wire", ["told"], True)]
+    assert [(i["title"], i["sources"], i["use_for_picks"]) for i in items] == [("The Wire", ["mentioned"], True)]
     assert client.post("/api/taste/use", json={"tmdb_id": 1438, "media_type": "tv", "use": False}).json()["use"] is False
     assert client.get("/api/taste/items").json()["items"][0]["use_for_picks"] is False
     as_user(client, BOB)
@@ -355,3 +358,30 @@ def test_plexbot_token_is_for_the_callers_own_overseerr_account(client, monkeypa
 def test_plexbot_token_refuses_when_unconfigured(client):
     assert as_user(client, ALICE).get("/api/plexbot-token").status_code == 503
 
+
+
+def test_history_is_the_callers_own_and_validated(client, monkeypatch):
+    class T:
+        def tv(self, i):
+            return {"name": f"Show {i}", "first_air_date": "2021-01-01", "poster_path": "/p.jpg"}
+
+        def movie(self, i):
+            return None
+
+    monkeypatch.setattr(api_mod, "TMDBClient", T)
+    as_user(client, ALICE)
+    assert client.post("/api/history/add", json={"tmdb_id": 77, "media_type": "tv"}).json()["title"] == "Show 77"
+    assert client.post("/api/history/rate", json={"tmdb_id": 77, "media_type": "tv", "rating": "loved"}).json()["rating"] == "loved"
+    assert client.post("/api/history/status", json={"tmdb_id": 77, "media_type": "tv", "status": "dropped"}).json()["status"] == "dropped"
+    [item] = client.get("/api/history").json()["items"]
+    assert (item["name"], item["rating"], item["status"], item["source"]) == ("Show 77", "loved", "dropped", "manual")
+    assert client.post("/api/history/rate", json={"tmdb_id": 77, "media_type": "tv", "rating": 5}).status_code == 422
+    assert client.post("/api/history/status", json={"tmdb_id": 77, "media_type": "tv", "status": "binged"}).status_code == 422
+    assert client.post("/api/history/add", json={"tmdb_id": 88, "media_type": "movie"}).status_code == 404
+    as_user(client, BOB)
+    assert client.get("/api/history").json()["items"] == []
+    assert client.post("/api/history/remove", json={"tmdb_id": 77, "media_type": "tv"}).json()["still_in_history"] is False
+    as_user(client, ALICE)
+    assert len(client.get("/api/history").json()["items"]) == 1  # Bob's remove touched only Bob
+    assert client.post("/api/history/remove", json={"tmdb_id": 77, "media_type": "tv"}).json()["ok"] is True
+    assert client.get("/api/history").json()["items"] == []

@@ -1,13 +1,16 @@
 """Recommendations: what to watch next, per person.
 
 1. Taste seeds from Plex history: log(episodes watched) decayed by recency (half-life 120d),
-   plus what they told Telly they liked, IMDb ratings of 7+, thumbs up, and (weakly) Overseerr
-   requests and chat mentions (taste.py). Top 12.
+   plus their ratings on History (history.py: loved beats everything, liked beats most
+   watching), IMDb ratings of 7+, thumbs up, and (weakly) Overseerr requests and chat mentions
+   (taste.py). Top 12.
 2. Candidates: TMDB recommendations for each seed (rank-discounted, weighted by the seed),
    plus this week's trending TV and movies (a smaller boost).
-3. Drop what they've watched, follow, watchlisted, requested, rated on IMDb, or thumbed down; drop
-   obscure titles (under 50 votes); nudge by rating.
-4. Haiku re-ranks the top 40 into 20 and writes a one-line reason for each. If Haiku is
+3. Drop what they've watched, follow, watchlisted, requested, rated, or thumbed down; drop
+   obscure titles (under 50 votes); nudge by rating. Push down (never drop) what TMDB
+   recommends off something they didn't like: rated Not for me, dropped early, or 4 and under on
+   IMDb. The push is capped, so one bad show can't bury a whole genre.
+4. The model re-ranks the top 40 into 20 and writes a one-line reason for each. If it is
    unavailable, the code order stands and reasons are templated ("Because you watched …").
 
 Trending (the home page rail, `trending_for`) is built in the same pass, from the same TMDB
@@ -29,12 +32,12 @@ from datetime import date, datetime
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from . import llm
+from . import history, llm
 from .clients.tmdb import TMDBClient
 from .ratings import lookup
 from . import taste
 from .models import (Feedback, Follow, LibraryItem, Play, Recommendation, TasteSignal, Title,
-                     TrendingPick, User, WatchlistItem, aware, utcnow)
+                     TrendingPick, User, WatchEntry, WatchlistItem, aware, utcnow)
 
 log = logging.getLogger(__name__)
 
@@ -54,6 +57,13 @@ FRESH_DAYS, STALE_DAYS = 60, 365
 # first season, and an old show trending is usually a new season, which is fresh.
 STALE_FLOOR = {"movie": 0.45, "tv": 0.7}
 MISFIT_FLOOR = 0.25  # a title far outside their genres keeps a quarter of its buzz
+# History ratings, as a share of their most-watched show's weight.
+LOVED, LIKED, UNRATED_ELSEWHERE = 1.3, 0.9, 0.5
+# Dislikes: how hard each pushes down what TMDB recommends off it, and the most any title can
+# lose (half its score), so a dislike can sink a lookalike but never hide a whole genre.
+NOT_FOR_ME, DROPPED_EARLY = 0.8, 0.4
+NEG_FLOOR = 0.5
+MAX_NEGATIVES = 6
 
 
 @dataclass
@@ -62,6 +72,7 @@ class Seed:
     media_type: str
     name: str
     weight: float
+    kind: str = "watched"  # loved | liked | watched | interest; for a dislike: not_for_me | dropped
 
 
 @dataclass
@@ -81,6 +92,12 @@ class Candidate:
     released: date | None = None
     trend_rank: int | None = None  # 0-based, within its media type's trending list
     anime: bool = False
+    penalty: float = 0.0  # from what they didn't like; see NEG_FLOOR
+    unlike: list[str] = field(default_factory=list)
+
+    @property
+    def damp(self) -> float:
+        return max(NEG_FLOOR, 1 - self.penalty)
 
 
 def seeds_for(s: Session, plex_id: int, now: datetime | None = None) -> list[Seed]:
@@ -99,29 +116,58 @@ def seeds_for(s: Session, plex_id: int, now: datetime | None = None) -> list[See
         w = math.log1p(n) * 0.5 ** (max(age, 0) / HALF_LIFE_DAYS)
         seeds[(tmdb_id, media_type)] = Seed(tmdb_id, media_type, name, w)
     top = max((x.weight for x in seeds.values()), default=1.0)
-    # Taste from outside Plex (taste.py). Foundational: what they told Telly they liked and
-    # their IMDb ratings. Weak: Overseerr requests and chat mentions, which show interest, not
-    # liking (a request can be a try-out or for a friend). Each can be switched off per title.
+    # Taste from outside Plex (taste.py). Foundational: their IMDb ratings. Weak: Overseerr
+    # requests and chat mentions, which show interest, not liking (a request can be a try-out
+    # or for a friend). Each can be switched off per title.
     for sig in s.scalars(select(TasteSignal).where(TasteSignal.plex_id == plex_id,
                                                    TasteSignal.use_for_picks.is_(True))):
         key = (sig.tmdb_id, sig.media_type)
-        if sig.source == "told":
-            w = top
-        elif sig.source == "imdb_rating" and (sig.rating or 0) >= taste.LIKE_FROM:
-            w = top * (sig.rating - 5) / 5 * 0.8
+        if sig.source == "imdb_rating" and (sig.rating or 0) >= taste.LIKE_FROM:
+            w, kind = top * (sig.rating - 5) / 5 * 0.8, "liked"
         elif sig.source in taste.WEAK_SOURCES:
             age = (now - aware(sig.noted_at)).days if sig.noted_at else 365
-            w = math.log1p(3) * taste.WEAK_FACTOR * 0.5 ** (max(age, 0) / HALF_LIFE_DAYS)
+            w, kind = math.log1p(3) * taste.WEAK_FACTOR * 0.5 ** (max(age, 0) / HALF_LIFE_DAYS), "interest"
         else:
             continue  # a watchlist entry is interest, not taste; a low rating is a dislike
         name = sig.title or (seeds[key].name if key in seeds else "")
         if name and (key not in seeds or seeds[key].weight < w):
-            seeds[key] = Seed(sig.tmdb_id, sig.media_type, name, w)
+            seeds[key] = Seed(sig.tmdb_id, sig.media_type, name, w, kind)
     for f in s.scalars(select(Feedback).where(Feedback.plex_id == plex_id, Feedback.value > 0)):
         key = (f.tmdb_id, f.media_type)
         name = f.title or (seeds[key].name if key in seeds else "")
-        seeds[key] = Seed(f.tmdb_id, f.media_type, name, top * 1.1)  # asked for beats watched
+        seeds[key] = Seed(f.tmdb_id, f.media_type, name, top * 1.1, "liked")  # asked for beats watched
+    # History (history.py) has the last word: the rating sets the sign, Plex only the amount.
+    for w in history.watched(s, plex_id, now):
+        key = (w.tmdb_id, w.media_type)
+        if w.rating == 2:
+            seeds[key] = Seed(w.tmdb_id, w.media_type, w.name, top * LOVED, "loved")
+        elif w.rating == 1:
+            base = seeds[key].weight if key in seeds else 0.0
+            seeds[key] = Seed(w.tmdb_id, w.media_type, w.name, max(base, top * LIKED), "liked")
+        elif w.rating == -1 or w.status == "dropped":
+            seeds.pop(key, None)  # not taste; see negatives_for
+        elif w.source == "manual" and key not in seeds:
+            seeds[key] = Seed(w.tmdb_id, w.media_type, w.name, top * UNRATED_ELSEWHERE)
     return sorted(seeds.values(), key=lambda x: -x.weight)[:MAX_SEEDS]
+
+
+def negatives_for(s: Session, plex_id: int, now: datetime | None = None) -> list[Seed]:
+    """What they watched and didn't like: rated Not for me (or 4 and under on IMDb), or
+    dropped early. Dropped a season or more in is just losing interest and doesn't count."""
+    out: dict[tuple[int, str], Seed] = {}
+    for sig in s.scalars(select(TasteSignal).where(
+            TasteSignal.plex_id == plex_id, TasteSignal.source == "imdb_rating",
+            TasteSignal.rating <= taste.DISLIKE_TO)):
+        out[(sig.tmdb_id, sig.media_type)] = Seed(sig.tmdb_id, sig.media_type, sig.title, NOT_FOR_ME, "not_for_me")
+    for w in history.watched(s, plex_id, now):
+        key = (w.tmdb_id, w.media_type)
+        if w.rating == -1:
+            out[key] = Seed(w.tmdb_id, w.media_type, w.name, NOT_FOR_ME, "not_for_me")
+        elif w.rating is None and w.dropped_early:
+            out[key] = Seed(w.tmdb_id, w.media_type, w.name, DROPPED_EARLY, "dropped")
+        elif w.rating is not None:
+            out.pop(key, None)  # a History rating overrides an old IMDb one
+    return sorted(out.values(), key=lambda x: -x.weight)[:MAX_NEGATIVES]
 
 
 def _candidate(r: dict, media_type: str) -> Candidate:
@@ -156,11 +202,13 @@ def _excluded(s: Session, plex_id: int) -> set[tuple[int, str]]:
     # seen, rated, requested or watchlisted anywhere: they know about it already
     ex |= set(s.execute(select(TasteSignal.tmdb_id, TasteSignal.media_type).where(
         TasteSignal.plex_id == plex_id)).all())
+    ex |= set(s.execute(select(WatchEntry.tmdb_id, WatchEntry.media_type).where(
+        WatchEntry.plex_id == plex_id)).all())
     return {(int(a), b) for a, b in ex}
 
 
 def candidates(s: Session, tmdb: TMDBClient, plex_id: int, seeds: list[Seed],
-               trending: dict[str, list[dict]]) -> list[Candidate]:
+               trending: dict[str, list[dict]], negatives: list[Seed] = ()) -> list[Candidate]:
     excluded = _excluded(s, plex_id)
     pool: dict[tuple[int, str], Candidate] = {}
     top = max((x.weight for x in seeds), default=1.0)
@@ -187,8 +235,14 @@ def candidates(s: Session, tmdb: TMDBClient, plex_id: int, seeds: list[Seed],
                 c.trending = True
                 c.trend_rank = rank
                 c.score += TRENDING_WEIGHT * top / math.sqrt(rank + 1)
+    for neg in negatives:
+        for rank, r in enumerate(tmdb.recommendations(neg.media_type, neg.tmdb_id)[:PER_SEED]):
+            c = pool.get((r.get("id"), neg.media_type))
+            if c is not None:
+                c.penalty += neg.weight / math.sqrt(rank + 1)
+                c.unlike.append(neg.name)
     for c in pool.values():
-        c.score *= 0.6 + 0.4 * (c.rating / 10)
+        c.score *= (0.6 + 0.4 * (c.rating / 10)) * c.damp
     return sorted(pool.values(), key=lambda c: -c.score)
 
 
@@ -205,25 +259,42 @@ def template_reason(c: Candidate) -> str:
     return "Trending this week."
 
 
-def rerank(seeds: list[Seed], shortlist: list[Candidate]) -> list[tuple[Candidate, str]] | None:
-    """Haiku picks and orders KEEP of the shortlist with a reason each; None = use code order."""
+def _named(seeds: list[Seed], *kinds: str) -> str:
+    return "; ".join(f"{x.name} ({'show' if x.media_type == 'tv' else 'movie'})"
+                     for x in seeds if x.kind in kinds and x.name)
+
+
+def taste_lines(seeds: list[Seed], negatives: list[Seed] = ()) -> str:
+    """Their taste in words for the model: categories, not numbers."""
+    parts = [("Loved", _named(seeds, "loved")), ("Liked", _named(seeds, "liked")),
+             ("Watched a lot (not rated)", _named(seeds, "watched")),
+             ("Showed interest in", _named(seeds, "interest")),
+             ("Didn't like (avoid more of the same)", _named(negatives, "not_for_me")),
+             ("Gave up on after an episode or two", _named(negatives, "dropped"))]
+    return "\n".join(f"{label}: {names}" for label, names in parts if names)
+
+
+def rerank(seeds: list[Seed], shortlist: list[Candidate],
+           negatives: list[Seed] = ()) -> list[tuple[Candidate, str]] | None:
+    """The model picks and orders KEEP of the shortlist with a reason each; None = code order."""
     if not llm.available() or not shortlist:
         return None
-    taste = "; ".join(f"{x.name} ({'show' if x.media_type == 'tv' else 'movie'})" for x in seeds)
     lines = [
         f'{i}. [{c.media_type}:{c.tmdb_id}] {c.title} ({c.year or "?"}), rating {c.rating:.1f}'
-        f'{", trending" if c.trending else ""}; similar to: {", ".join(_because(c)) or "n/a"}. '
+        f'{", trending" if c.trending else ""}; similar to: {", ".join(_because(c)) or "n/a"}'
+        f'{"; also like " + ", ".join(dict.fromkeys(c.unlike)) + " (which they did not like)" if c.unlike else ""}. '
         f'{c.overview[:160]}'
         for i, c in enumerate(shortlist, 1)
     ]
     prompt = (
         "You pick what someone should watch next on their Plex server.\n"
-        f"What they've watched most (strongest first): {taste}\n\n"
+        f"Their taste, strongest first within each line:\n{taste_lines(seeds, negatives)}\n\n"
         "Candidates:\n" + "\n".join(lines) + "\n\n"
         f"Choose the best {KEEP} for this person, best first. Favor real fit with their taste "
-        "over popularity; keep a mix of shows and movies if both fit. For each, write one "
-        "specific sentence (max 18 words) saying why, naming something they watched when "
-        "it helps. No spoilers. Reply with JSON only: "
+        "over popularity: what they loved counts most, and steer away from what they didn't "
+        "like; keep a mix of shows and movies if both fit. For each, write one specific "
+        "sentence (max 18 words) saying why, naming something they loved or watched when it "
+        "helps. No spoilers. Reply with JSON only: "
         '[{"key": "tv:123", "reason": "..."}]'
     )
     out = llm.ask_json(prompt)
@@ -292,7 +363,7 @@ def trending_for(pool: list[Candidate], skip: set[tuple[int, str]],
         else:
             fit = 1.0  # too little history to judge: plain buzz × freshness
         fresh = freshness(c, today)
-        score = buzz * fresh * fit * (0.6 + 0.4 * c.rating / 10)
+        score = buzz * fresh * fit * (0.6 + 0.4 * c.rating / 10) * c.damp
         out.append((c, score, trending_reason(c, fresh == 1.0, today)))
     out.sort(key=lambda x: -x[1])
     return out[:TRENDING_KEEP]
@@ -311,7 +382,8 @@ def trending_reason(c: Candidate, fresh: bool, today: date) -> str:
 def build_for(s: Session, tmdb: TMDBClient, plex_id: int,
               trending: dict[str, list[dict]]) -> int:
     seeds = seeds_for(s, plex_id)
-    ranked = candidates(s, tmdb, plex_id, seeds, trending)
+    negatives = negatives_for(s, plex_id)
+    ranked = candidates(s, tmdb, plex_id, seeds, trending, negatives)
     library = set(s.execute(select(LibraryItem.tmdb_id, LibraryItem.media_type)).all())
     if not seeds:
         # Nothing to go on yet (a new member): no picks, and any they had stay, but Trending
@@ -326,7 +398,7 @@ def build_for(s: Session, tmdb: TMDBClient, plex_id: int,
     # Haiku's) rather than dropping to the template.
     before = {(r.tmdb_id, r.media_type): r.reason for r in s.scalars(
         select(Recommendation).where(Recommendation.plex_id == plex_id)) if r.reason}
-    picked = rerank(seeds, shortlist) or [
+    picked = rerank(seeds, shortlist, negatives) or [
         (c, before.get((c.tmdb_id, c.media_type)) or template_reason(c)) for c in shortlist[:KEEP]]
     s.execute(delete(Recommendation).where(Recommendation.plex_id == plex_id))
     now = utcnow()

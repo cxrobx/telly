@@ -359,9 +359,9 @@ def test_record_taste_finds_the_title_and_records_it_for_the_caller(client, monk
     assert (out["tmdb_id"], out["liked"]) == (9480, True)
     assert out["other_matches"][0]["tmdb_id"] == 61889
     with db.session_scope() as s:
-        from telly.models import TasteSignal
-        assert s.get(TasteSignal, (BOB, 9480, "movie", "told")) is not None
-        assert s.get(TasteSignal, (ALICE, 9480, "movie", "told")) is None
+        from telly.models import WatchEntry
+        assert s.get(WatchEntry, (BOB, 9480, "movie")).rating == 1
+        assert s.get(WatchEntry, (ALICE, 9480, "movie")) is None
 
 
 def test_telling_plexbot_a_first_like_builds_first_picks_now(client, monkeypatch):

@@ -18,7 +18,7 @@ from itsdangerous import BadSignature, URLSafeTimedSerializer
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
-from . import memory, plexbot, recs, shows, taste
+from . import history, memory, plexbot, recs, shows, taste
 from .clients.overseerr import OverseerrClient
 from .clients.plextv import PlexTV
 from .clients.tmdb import TMDBClient
@@ -350,18 +350,81 @@ class ToldIn(BaseModel):
 
 @router.post("/taste/told")
 def taste_told(body: ToldIn, background: BackgroundTasks, pid: int = Me) -> dict:
-    """The caller says they watched something (anywhere) and liked it, or didn't."""
-    with session_scope() as s:
-        name, poster = taste._details(s, TMDBClient(), body.tmdb_id, body.media_type)
-        if not name:
-            raise HTTPException(404, "No such title on TMDB.")
-        if body.liked:
-            taste.add(s, pid, body.tmdb_id, body.media_type, "told", name, poster_path=poster)
-        else:
-            recs.give_feedback(s, pid, body.tmdb_id, body.media_type, -1)
+    """The caller says they watched something (anywhere) and liked it, or didn't: a Liked it
+    or Not for me on their History."""
+    try:
+        with session_scope() as s:
+            out = history.record(s, TMDBClient(), pid, body.tmdb_id, body.media_type, body.liked)
+    except history.HistoryError:
+        raise HTTPException(404, "No such title on TMDB.") from None
     if body.liked:
         background.add_task(recs.warm, pid)  # runs after the commit above
-    return {"ok": True, "title": name, "liked": body.liked}
+    return {"ok": True, "title": out["title"], "liked": body.liked}
+
+
+# ── Watch history (history.py): Plex plays + what they add, with ratings ─────
+
+
+@router.get("/history")
+def watch_history(pid: int = Me) -> dict:
+    with session_scope() as s:
+        return {"items": history.listing(s, pid)}
+
+
+class HistoryIn(BaseModel):
+    tmdb_id: int
+    media_type: Literal["tv", "movie"]
+
+
+class RateIn(HistoryIn):
+    rating: Literal["not_for_me", "liked", "loved"] | None
+
+
+class StatusIn(HistoryIn):
+    status: Literal["watching", "finished", "dropped"] | None  # None: back to what Plex says
+
+
+class AddIn(HistoryIn):
+    status: Literal["watching", "finished", "dropped"] = "finished"
+
+
+RATING_IN = {v: k for k, v in history.RATINGS.items()}
+
+
+def _history_write(pid: int, fn) -> dict:
+    try:
+        with session_scope() as s:
+            return fn(s)
+    except history.HistoryError as e:
+        raise HTTPException(404, str(e)) from None
+
+
+@router.post("/history/add")
+def history_add(body: AddIn, pid: int = Me) -> dict:
+    """Something they watched anywhere, not just on Plex."""
+    return _history_write(pid, lambda s: history.add(s, TMDBClient(), pid, body.tmdb_id, body.media_type,
+                                                     status=body.status))
+
+
+@router.post("/history/rate")
+def history_rate(body: RateIn, background: BackgroundTasks, pid: int = Me) -> dict:
+    out = _history_write(pid, lambda s: history.rate(
+        s, TMDBClient(), pid, body.tmdb_id, body.media_type, RATING_IN.get(body.rating)))
+    if body.rating in ("liked", "loved"):
+        background.add_task(recs.warm, pid)  # a first rating can be someone's first taste
+    return out
+
+
+@router.post("/history/status")
+def history_status(body: StatusIn, pid: int = Me) -> dict:
+    return _history_write(pid, lambda s: history.set_status(s, TMDBClient(), pid, body.tmdb_id,
+                                                            body.media_type, body.status))
+
+
+@router.post("/history/remove")
+def history_remove(body: HistoryIn, pid: int = Me) -> dict:
+    with session_scope() as s:
+        return history.remove(s, pid, body.tmdb_id, body.media_type)
 
 
 # ── Memory (docs/spec-memory.md): the caller's own, and nobody else's ──────────

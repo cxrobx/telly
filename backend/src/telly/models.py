@@ -291,9 +291,9 @@ class Rating(Base):
 class TasteSignal(Base):
     """Something that says a person likes (or knows) a title, besides Plex plays (taste.py).
 
-    source, strongest first: told (they said they liked it, in Telly or to plexbot) |
-    imdb_rating | overseerr (they requested it: interest, not proof they like it) | mentioned
-    (it came up in their plexbot chats) | imdb_watchlist. `rating` is their own 1-10 score where
+    source, strongest first: imdb_rating | overseerr (they requested it: interest, not proof they like it) | mentioned
+    (it came up in their plexbot chats) | imdb_watchlist. (`told`, "they said they liked it",
+    moved to watch_entries as Liked it on 2026-09-28.) `rating` is their own 1-10 score where
     the source has one. use_for_picks=False keeps it out of their taste (it still isn't
     recommended back to them)."""
 
@@ -308,6 +308,31 @@ class TasteSignal(Base):
     noted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     use_for_picks: Mapped[bool] = mapped_column(default=True, server_default="1")
     poster_path: Mapped[str | None] = mapped_column(String)
+
+
+class WatchEntry(Base):
+    """A person's own word on something they watched (history.py): how much they enjoyed it
+    and, if they said, where they are with it. Plex plays are never copied here; a title
+    watched on Plex gets a row only once they rate it or set its status.
+
+    rating: -1 not for me | 1 liked it | 2 loved it | None not rated. status: watching |
+    finished | dropped | None (Telly works it out from Plex). source: manual (they added it)
+    or plex (they rated something Plex saw)."""
+
+    __tablename__ = "watch_entries"
+
+    plex_id: Mapped[int] = mapped_column(ForeignKey("users.plex_id"), primary_key=True)
+    tmdb_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    media_type: Mapped[str] = mapped_column(String, primary_key=True)
+    title: Mapped[str] = mapped_column(String, default="")
+    year: Mapped[int | None] = mapped_column(Integer)
+    poster_path: Mapped[str | None] = mapped_column(String)
+    backdrop_path: Mapped[str | None] = mapped_column(String)
+    rating: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str | None] = mapped_column(String)
+    source: Mapped[str] = mapped_column(String, default="manual")
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class ImdbRow(Base):

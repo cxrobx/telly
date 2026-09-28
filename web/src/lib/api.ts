@@ -185,3 +185,23 @@ export function relDay(iso: string) {
 }
 
 export const epLabel = (s: number, e: number) => `S${s} · E${e}`;
+
+export type WatchRating = "not_for_me" | "liked" | "loved";
+export type WatchStatus = "caught_up" | "finished" | "watching" | "stalled" | "dropped";
+
+export type HistoryItem = Art & {
+  tmdb_id: number;
+  media_type: "tv" | "movie";
+  name: string;
+  year: number | null;
+  status: WatchStatus;
+  plex_status: WatchStatus | null; // what Plex alone says; null when never played there
+  status_set: boolean; // they chose the status
+  rating: WatchRating | null;
+  source: "plex" | "manual";
+  episodes: number;
+  aired: number | null;
+  last_watched: string | null;
+  added_at: string | null;
+  ratings?: Ratings;
+};

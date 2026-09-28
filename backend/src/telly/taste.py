@@ -1,5 +1,5 @@
-"""Taste beyond Plex plays: what someone told Telly they liked, IMDb, and (weakly) Overseerr
-requests and chat mentions.
+"""Taste beyond Plex plays: IMDb, and (weakly) Overseerr requests and chat mentions. What
+someone says they watched and how much they liked it lives in their History (history.py).
 
 Every signal belongs to one person (plex_id) and feeds recs.py two ways: a liked title is a
 taste seed, and anything already seen, rated or requested is kept out of their picks.
@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from .clients.overseerr import OverseerrClient
 from .clients.tmdb import TMDBClient
-from .models import ImdbRow, Play, Rating, TasteSignal, Title, User, utcnow
+from .models import ImdbRow, Play, Rating, TasteSignal, Title, User, WatchEntry, utcnow
 
 log = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ DISLIKE_TO = 4     # this low counts against, like a thumbs down
 # fix-it question. They count at a third of a few watched episodes, and can be switched off.
 WEAK_SOURCES = {"overseerr", "mentioned"}
 WEAK_FACTOR = 0.35
-SOURCES = ("told", "imdb_rating", "overseerr", "mentioned", "imdb_watchlist")
+SOURCES = ("imdb_rating", "overseerr", "mentioned", "imdb_watchlist")
 
 
 class ImdbImportError(ValueError):
@@ -262,7 +262,9 @@ def summary(s: Session, plex_id: int) -> dict:
         ImdbRow.plex_id == plex_id, ImdbRow.match == "none")) or 0
     off = s.scalar(select(func.count(func.distinct(TasteSignal.tmdb_id))).where(
         TasteSignal.plex_id == plex_id, TasteSignal.use_for_picks.is_(False))) or 0
-    return {"told": by_source.get("told", 0), "overseerr": by_source.get("overseerr", 0),
+    rated = s.scalar(select(func.count()).select_from(WatchEntry).where(
+        WatchEntry.plex_id == plex_id, WatchEntry.rating >= 1)) or 0
+    return {"told": rated, "overseerr": by_source.get("overseerr", 0),
             "mentioned": by_source.get("mentioned", 0), "switched_off": off,
             "imdb_ratings": by_source.get("imdb_rating", 0), "imdb_watchlist": by_source.get("imdb_watchlist", 0),
             "imdb_pending": pending, "imdb_unmatched": unmatched}
@@ -282,7 +284,9 @@ def known_keys(s: Session, plex_id: int) -> set[tuple[int, str]]:
         Play.plex_id == plex_id, Play.tmdb_id.is_not(None)).distinct())
     sigs = s.execute(select(TasteSignal.tmdb_id, TasteSignal.media_type).where(
         TasteSignal.plex_id == plex_id))
-    return {(a, b) for a, b in plays} | {(a, b) for a, b in sigs}
+    mine = s.execute(select(WatchEntry.tmdb_id, WatchEntry.media_type).where(
+        WatchEntry.plex_id == plex_id))
+    return {(a, b) for a, b in plays} | {(a, b) for a, b in sigs} | {(a, b) for a, b in mine}
 
 
 def _year(r: dict) -> int | None:
@@ -319,13 +323,11 @@ def pick_title(results: list[dict], known: set[tuple[int, str]], title: str,
     return {"pick": pick, "candidates": out}
 
 
-def record(s: Session, tmdb: TMDBClient, plex_id: int, tmdb_id: int, media_type: str, liked: bool) -> dict:
-    """Liked → a `told` taste seed. Disliked → a thumbs-down. Either way never picked for them."""
-    from . import recs  # recs imports taste
-    name, poster = _details(s, tmdb, tmdb_id, media_type)
-    if liked:
-        add(s, plex_id, tmdb_id, media_type, "told", name, poster_path=poster)
-    else:
-        recs.give_feedback(s, plex_id, tmdb_id, media_type, -1)
-    return {"ok": True, "title": name, "tmdb_id": tmdb_id, "media_type": media_type, "liked": liked,
-            "note": "Picks update in tonight's refresh."}
+def record(s: Session, tmdb: TMDBClient, plex_id: int, tmdb_id: int, media_type: str, liked: bool,
+           loved: bool = False, status: str | None = None) -> dict:
+    """Into their History: loved, liked or not for me (history.record). Either way it's never
+    picked for them."""
+    from . import history
+    out = history.record(s, tmdb, plex_id, tmdb_id, media_type, liked, loved, status)
+    out["note"] = "Picks update in tonight's refresh."
+    return out

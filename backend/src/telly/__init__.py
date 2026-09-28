@@ -69,8 +69,12 @@ def main() -> None:
         from . import taste
         from .db import session_scope
         with session_scope() as s:
-            print("added" if taste.add(s, args.plex_id, args.tmdb_id, args.media_type, args.source,
-                                       args.title) else "already there")
+            if args.source == "told":  # History: a Liked it rating
+                from . import history
+                print(history.record(s, None, args.plex_id, args.tmdb_id, args.media_type, liked=True))
+            else:
+                print("added" if taste.add(s, args.plex_id, args.tmdb_id, args.media_type, args.source,
+                                           args.title) else "already there")
     elif args.cmd == "ratings":
         from .jobs import run_ratings
         print(run_ratings(force=args.force))
