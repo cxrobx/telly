@@ -34,6 +34,7 @@ export function PlexbotChat() {
   // The iframe mounts on first open and stays, so closing keeps the conversation.
   const [mounted, setMounted] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let live = true;
@@ -74,11 +75,37 @@ export function PlexbotChat() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, close]);
 
+  // Phones: iOS doesn't shrink the page for the keyboard, it scrolls it, which pushed the
+  // full-screen panel's input to the top with dead space under it. Pin the panel to the visible
+  // area instead, so the input sits on the keyboard (the chat inside stays 100% of the frame).
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const panel = panelRef.current;
+    if (!open || !vv || !panel || !window.matchMedia("(max-width: 767px)").matches) return;
+    const fit = () => {
+      panel.style.top = `${vv.offsetTop}px`;
+      panel.style.bottom = "auto";
+      panel.style.height = `${vv.height}px`;
+    };
+    fit();
+    vv.addEventListener("resize", fit);
+    vv.addEventListener("scroll", fit);
+    const html = document.documentElement;
+    const overflow = html.style.overflow;
+    html.style.overflow = "hidden"; // the page behind shouldn't scroll under the chat
+    return () => {
+      vv.removeEventListener("resize", fit);
+      vv.removeEventListener("scroll", fit);
+      panel.style.top = panel.style.bottom = panel.style.height = "";
+      html.style.overflow = overflow;
+    };
+  }, [open]);
+
   if (!grant) return null;
   return (
     <>
       {mounted && (
-        <div className="plexbot-panel glass" data-open={open} aria-hidden={!open}>
+        <div ref={panelRef} className="plexbot-panel glass" data-open={open} aria-hidden={!open}>
           <iframe src={chatSrc(grant)} title="plexbot" referrerPolicy="origin" allow="clipboard-write" />
         </div>
       )}
