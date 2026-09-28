@@ -1,6 +1,6 @@
 """Headless Claude on the subscription (`claude -p`), never the metered API.
 
-Runs in a scratch cwd so no CLAUDE.md is loaded (each load costs ~40k tokens), on Haiku,
+Runs in a scratch cwd so no CLAUDE.md is loaded (each load costs ~40k tokens), on Sonnet 5.5,
 with no tools unless the caller asks for web search. Returns parsed JSON or None; every
 caller has a non-LLM fallback, so None is always safe.
 """

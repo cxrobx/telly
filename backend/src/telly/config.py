@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     # Headless Claude (subscription via CLAUDE_CODE_OAUTH_TOKEN or a logged-in CLI).
     # Everything that uses it degrades cleanly when it's unavailable.
     llm_enabled: bool = True
-    llm_model: str = "haiku"
+    llm_model: str = "claude-sonnet-5-5"  # Chris, 2026-09-28 (was haiku)
 
     # Outside scores (ratings.py). OMDb: IMDb for everything, RT for movies. MDBList: RT for series, and IMDb when OMDb has none yet.
     omdb_api_key: str = ""
