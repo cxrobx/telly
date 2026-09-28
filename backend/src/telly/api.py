@@ -71,7 +71,7 @@ def auth_start(response: Response) -> dict:
 
 
 @router.post("/auth/finish")
-def auth_finish(request: Request, response: Response) -> dict:
+def auth_finish(request: Request, response: Response, background: BackgroundTasks) -> dict:
     try:
         pin_id = _pin_signer().loads(request.cookies.get(PIN_COOKIE) or "", max_age=PIN_MAX_AGE)
     except BadSignature:
@@ -88,6 +88,7 @@ def auth_finish(request: Request, response: Response) -> dict:
             raise HTTPException(403, "That Plex account isn't a member of this Plex server.")
         u.plex_token_enc = encrypt_token(token)
         u.signed_in_at = utcnow()
+    background.add_task(recs.warm, who["id"])  # a new member sees something before tonight
     response.delete_cookie(PIN_COOKIE, path="/")
     _set_cookie(response, COOKIE, make_session(who["id"]), get_settings().session_days * 86400)
     return {"done": True, "username": who["username"]}
@@ -160,8 +161,19 @@ def home(pid: int = Me) -> dict:
         news = shows.whats_new(s, pid, days=30)[:12]
         picks = recs.for_user(s, pid, limit=recs.HOME_PICKS)
         hero = (timeline["dated"][0] if timeline["dated"] else None)
+        u = s.get(User, pid)
         return {"hero": hero, "airing_soon": timeline["dated"][:10], "whats_new": news,
-                "for_you": picks, "trending": recs.trending_for_user(s, pid)}
+                "for_you": picks, "trending": recs.trending_for_user(s, pid),
+                # nothing to base picks on yet: the home page asks them what they like
+                "needs_taste": u.taste_prompt_dismissed_at is None and not recs.seeds_for(s, pid),
+                "building": recs.warming(pid)}
+
+
+@router.post("/home/taste-prompt/dismiss")
+def dismiss_taste_prompt(pid: int = Me) -> dict:
+    with session_scope() as s:
+        s.get(User, pid).taste_prompt_dismissed_at = utcnow()
+    return {"ok": True}
 
 
 @router.get("/timeline")
@@ -284,12 +296,13 @@ class ImdbIn(BaseModel):
 MAX_CSV = 5_000_000
 
 
-def _resolve_imdb_now() -> None:
+def _resolve_imdb_now(pid: int) -> None:
     try:
         with session_scope() as s:
             taste.resolve_imdb(s, TMDBClient())
     except Exception as e:  # noqa: BLE001 — the nightly run picks up anything left pending
         log.warning("imdb resolve failed: %s", e)
+    recs.warm(pid)  # ratings only count once matched to TMDB
 
 
 @router.post("/taste/imdb")
@@ -303,7 +316,7 @@ def import_imdb(body: ImdbIn, background: BackgroundTasks, pid: int = Me) -> dic
         raise HTTPException(400, str(e)) from e
     with session_scope() as s:
         result = taste.store_imdb(s, pid, kind, rows)
-    background.add_task(_resolve_imdb_now)
+    background.add_task(_resolve_imdb_now, pid)
     return result
 
 
@@ -336,7 +349,7 @@ class ToldIn(BaseModel):
 
 
 @router.post("/taste/told")
-def taste_told(body: ToldIn, pid: int = Me) -> dict:
+def taste_told(body: ToldIn, background: BackgroundTasks, pid: int = Me) -> dict:
     """The caller says they watched something (anywhere) and liked it, or didn't."""
     with session_scope() as s:
         name, poster = taste._details(s, TMDBClient(), body.tmdb_id, body.media_type)
@@ -346,7 +359,9 @@ def taste_told(body: ToldIn, pid: int = Me) -> dict:
             taste.add(s, pid, body.tmdb_id, body.media_type, "told", name, poster_path=poster)
         else:
             recs.give_feedback(s, pid, body.tmdb_id, body.media_type, -1)
-        return {"ok": True, "title": name, "liked": body.liked}
+    if body.liked:
+        background.add_task(recs.warm, pid)  # runs after the commit above
+    return {"ok": True, "title": name, "liked": body.liked}
 
 
 @router.get("/search/titles")

@@ -1,11 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { Search, ThumbsDown, ThumbsUp, X } from "lucide-react";
+import { useMemo } from "react";
 import { useBackdrop } from "@/components/backdrop";
 import { Empty, Poster, Section, Skeleton } from "@/components/ui";
-import { ImdbImport } from "@/components/taste";
+import { ImdbImport, Tell } from "@/components/taste";
 import { api, backdrop, useApi } from "@/lib/api";
 
 type Item = {
@@ -19,8 +18,6 @@ type Item = {
   noted_at: string | null;
 };
 
-type Hit = { tmdb_id: number; media_type: "tv" | "movie"; name: string; year: string; poster_path: string | null };
-
 // Strongest first. Requests and chat mentions are interest, not proof of liking, so they
 // count a little and are the ones most worth switching off.
 const GROUPS: { source: string; title: string; note: string }[] = [
@@ -30,59 +27,6 @@ const GROUPS: { source: string; title: string; note: string }[] = [
   { source: "mentioned", title: "Came up in plexbot chats", note: "Counts a little: mostly fix-it questions, not reviews." },
   { source: "imdb_watchlist", title: "Your IMDb watchlist", note: "Never shapes picks; just isn't recommended back to you." },
 ];
-
-function Tell({ onTold }: { onTold: () => void }) {
-  const [q, setQ] = useState("");
-  const [hits, setHits] = useState<Hit[]>([]);
-  const [done, setDone] = useState<Record<string, "liked" | "disliked">>({});
-  const searchable = q.trim().length >= 2;
-  useEffect(() => {
-    if (!searchable) return;
-    const t = setTimeout(() => api<{ results: Hit[] }>(`/search/titles?q=${encodeURIComponent(q)}`).then((r) => setHits(r.results)), 250);
-    return () => clearTimeout(t);
-  }, [q, searchable]);
-  const tell = async (h: Hit, liked: boolean) => {
-    await api("/taste/told", { body: { tmdb_id: h.tmdb_id, media_type: h.media_type, liked } });
-    setDone((d) => ({ ...d, [`${h.media_type}-${h.tmdb_id}`]: liked ? "liked" : "disliked" }));
-    onTold();
-  };
-  const shown = searchable ? hits : [];
-  return (
-    <div className="search">
-      <label className="glass search-box">
-        <Search size={18} />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Something you watched anywhere: a show or a movie" aria-label="Tell Telly about something you watched" />
-        {q && (
-          <button className="icon-btn ghost" aria-label="Clear" onClick={() => setQ("")}>
-            <X size={16} />
-          </button>
-        )}
-      </label>
-      {shown.length > 0 && (
-        <ul className="glass search-results inline">
-          {shown.map((h) => {
-            const state = done[`${h.media_type}-${h.tmdb_id}`];
-            return (
-              <li key={`${h.media_type}-${h.tmdb_id}`} className="search-row">
-                <span className="search-name">
-                  {h.name} <span className="muted">{h.year} · {h.media_type === "tv" ? "show" : "movie"}</span>
-                </span>
-                <span className="tell-actions">
-                  <button className="btn btn-small" aria-pressed={state === "liked"} onClick={() => tell(h, true)} disabled={!!state}>
-                    <ThumbsUp size={14} /> {state === "liked" ? "Added" : "Liked it"}
-                  </button>
-                  <button className="btn btn-small ghost" onClick={() => tell(h, false)} disabled={!!state} aria-label={`Didn't like ${h.name}`}>
-                    <ThumbsDown size={14} /> {state === "disliked" ? "Noted" : ""}
-                  </button>
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
-}
 
 function TasteCard({ item, onToggle }: { item: Item; onToggle: (use: boolean) => void }) {
   return (
@@ -128,7 +72,7 @@ export default function TastePage() {
         <h1 className="page-title">Your taste</h1>
         <p className="page-sub">
           What shapes your picks. Your Plex watch history, what you tell Telly, and your IMDb ratings count most. Requests and chat
-          mentions count a little, and you can switch any title off. Changes show up in tonight&apos;s picks.
+          mentions count a little, and you can switch any title off. Changes show up in tonight&apos;s picks (your first ones are built right away).
         </p>
       </header>
 

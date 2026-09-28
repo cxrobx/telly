@@ -76,6 +76,8 @@ export type Home = {
   whats_new: NewsEvent[];
   for_you: Pick[];
   trending: Pick[];
+  needs_taste: boolean; // nothing to base picks on yet, and they haven't closed the prompt
+  building: boolean; // their first picks are being built right now
 };
 
 export type Timeline = { from: string; to: string; dated: TimelineItem[]; renewed_no_date: Undated[] };

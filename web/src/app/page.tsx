@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, CalendarClock } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowRight, CalendarClock, X } from "lucide-react";
 import { useBackdrop } from "@/components/backdrop";
+import { Tell } from "@/components/taste";
 import { Chip, EpisodeCard, EventRow, PickCard, Rail, Section, Skeleton, Empty } from "@/components/ui";
-import { backdrop, epLabel, fmtDate, relDay, useApi, type Home, type Me } from "@/lib/api";
+import { api, backdrop, epLabel, fmtDate, relDay, useApi, type Home, type Me } from "@/lib/api";
 
 function Hero({ data }: { data: Home }) {
   const h = data.hero;
@@ -59,15 +61,74 @@ function Hero({ data }: { data: Home }) {
   return null;
 }
 
+// A new member has nothing for Telly to go on. Ask, right here, instead of leaving them to find
+// Your taste. Their first picks are built as soon as they answer (recs.warm on the API).
+function TasteStarter({ ready, waiting, onTold, onClose }: { ready: boolean; waiting: boolean; onTold: (liked: boolean) => void; onClose: () => void }) {
+  return (
+    <section className="section">
+      <div className="glass starter-card">
+        <div className="starter-head">
+          <div>
+            <h2 className="section-title">What do you love watching?</h2>
+            <p className="muted small starter-sub">
+              Name a few shows or movies you liked, watched anywhere. Telly builds your picks from them in about a minute.
+            </p>
+          </div>
+          <button className="icon-btn ghost" aria-label="Not now" onClick={onClose}>
+            <X size={16} />
+          </button>
+        </div>
+        <Tell onTold={onTold} />
+        {ready ? (
+          <p className="small accent-text">
+            Your picks are in, below. Add more any time on <Link href="/taste">Your taste</Link>.
+          </p>
+        ) : waiting ? (
+          <p className="small accent-text" role="status">Building your picks…</p>
+        ) : (
+          <p className="small muted">
+            Rate things on IMDb? <Link href="/taste">Bring your ratings in</Link> instead.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export default function HomePage() {
-  const { data, loading } = useApi<Home>("/home");
+  const { data, loading, reload, setData } = useApi<Home>("/home");
   const { data: me } = useApi<Me>("/me");
+  // Once they start answering, the card stays until they leave, even though needs_taste flips.
+  const [started, setStarted] = useState(false);
+  const [told, setTold] = useState(false);
+  const noPicks = !!data && data.for_you.length === 0;
+  const waiting = noPicks && (told || !!data?.building);
+
+  // their first picks take ~10–60 s: check back every 3 s, for up to two minutes
+  useEffect(() => {
+    if (!waiting) return;
+    let tries = 0;
+    const t = setInterval(() => (++tries > 40 ? clearInterval(t) : reload()), 3000);
+    return () => clearInterval(t);
+  }, [waiting, reload]);
+
+  const onTold = (liked: boolean) => {
+    setStarted(true);
+    if (liked) setTold(true);
+  };
+  const closeStarter = () => {
+    setStarted(false);
+    setData((d) => (d ? { ...d, needs_taste: false } : d));
+    api("/home/taste-prompt/dismiss", { method: "POST" }).catch(() => {});
+  };
   useBackdrop(backdrop(data?.hero?.backdrop_path ?? data?.for_you[0]?.backdrop_path, "w780"));
 
   if (loading || !data) return <Skeleton rows={4} />;
   return (
     <div className="page">
       <Hero data={data} />
+
+      {(data.needs_taste || started) && <TasteStarter ready={started && !noPicks} waiting={waiting} onTold={onTold} onClose={closeStarter} />}
 
       {data.airing_soon.length > 0 && (
         <Section title="Airing soon" action={<Link href="/timeline" className="section-link">Timeline</Link>}>

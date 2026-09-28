@@ -266,7 +266,7 @@ def test_library_mirror_adds_and_removes(env):
 
 def test_imdb_upload_lands_in_the_uploaders_profile_only(client, monkeypatch):
     from telly import api as api_mod
-    monkeypatch.setattr(api_mod, "_resolve_imdb_now", lambda: None)  # matching is tested in test_taste
+    monkeypatch.setattr(api_mod, "_resolve_imdb_now", lambda pid: None)  # matching is tested in test_taste
     csv = "Const,Your Rating,Date Rated,Title,Title Type\ntt0306414,10,2024-03-02,The Wire,TV Series\n"
     r = as_user(client, BOB).post("/api/taste/imdb", json={"csv": csv})
     assert r.status_code == 200 and r.json()["added"] == 1
@@ -293,6 +293,49 @@ def test_taste_toggle_and_told_are_the_callers_own(client, monkeypatch):
     as_user(client, BOB)
     assert client.get("/api/taste/items").json()["items"] == []
     assert client.post("/api/taste/use", json={"tmdb_id": 1438, "media_type": "tv", "use": True}).status_code == 404
+
+
+NEWBIE = 444
+
+
+class FirstPicksTMDB:
+    def recommendations(self, media_type, tmdb_id):
+        assert (media_type, tmdb_id) == ("tv", 1438)
+        return [{"id": 1100, "name": "Like The Wire", "vote_count": 900, "vote_average": 8.0}]
+
+    def trending(self, media_type, window="week"):
+        return [{"id": 900 if media_type == "tv" else 901, "name": f"Big {media_type}",
+                 "vote_count": 900, "vote_average": 7.0}]
+
+
+def test_a_new_member_gets_trending_at_sign_in_and_picks_once_they_say_what_they_like(client, monkeypatch):
+    from telly import recs, taste as taste_mod
+    monkeypatch.setattr(recs, "TMDBClient", FirstPicksTMDB)
+    monkeypatch.setattr(taste_mod, "_details", lambda s, tmdb, tid, mt: ("The Wire", "/p.jpg"))
+    with db.session_scope() as s:
+        s.add(User(plex_id=NEWBIE, pms_account_id=NEWBIE, username="newbie", overseerr_id=9))
+    monkeypatch.setattr(api_mod, "PlexTV", lambda: FakePlexTV(NEWBIE))
+    client.post("/api/auth/start", json={})
+    assert client.post("/api/auth/finish", json={}).json()["done"] is True
+
+    home = client.get("/api/home").json()
+    assert home["for_you"] == [] and home["needs_taste"] is True
+    assert {p["title"] for p in home["trending"]} == {"Big tv", "Big movie"}
+
+    client.post("/api/taste/told", json={"tmdb_id": 1438, "media_type": "tv"})
+    home = client.get("/api/home").json()
+    assert home["for_you"][0]["title"] == "Like The Wire" and home["needs_taste"] is False
+
+
+def test_the_taste_prompt_can_be_closed_and_stays_closed(client):
+    with db.session_scope() as s:
+        s.add(User(plex_id=NEWBIE, pms_account_id=NEWBIE, username="newbie"))
+    as_user(client, NEWBIE)
+    assert client.get("/api/home").json()["needs_taste"] is True
+    assert client.post("/api/home/taste-prompt/dismiss", json={}).json()["ok"] is True
+    assert client.get("/api/home").json()["needs_taste"] is False
+    as_user(client, BOB)  # someone else's prompt is untouched (Bob has no taste either)
+    assert client.get("/api/home").json()["needs_taste"] is True
 
 
 def test_plexbot_token_is_for_the_callers_own_overseerr_account(client, monkeypatch):

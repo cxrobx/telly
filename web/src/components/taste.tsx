@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Clapperboard, Film, Heart, MessageCircle, Star, Upload } from "lucide-react";
+import { ArrowRight, Clapperboard, Film, Heart, MessageCircle, Search, Star, ThumbsDown, ThumbsUp, Upload, X } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 
 type Taste = {
@@ -16,6 +16,63 @@ type Taste = {
   imdb_pending: number;
   imdb_unmatched: number;
 };
+
+type Hit = { tmdb_id: number; media_type: "tv" | "movie"; name: string; year: string; poster_path: string | null };
+
+// Search anything they watched, anywhere, and say whether they liked it (Your taste, and the
+// home page's first-visit card). `onTold(liked)` runs after each answer is saved.
+export function Tell({ onTold }: { onTold: (liked: boolean) => void }) {
+  const [q, setQ] = useState("");
+  const [hits, setHits] = useState<Hit[]>([]);
+  const [done, setDone] = useState<Record<string, "liked" | "disliked">>({});
+  const searchable = q.trim().length >= 2;
+  useEffect(() => {
+    if (!searchable) return;
+    const t = setTimeout(() => api<{ results: Hit[] }>(`/search/titles?q=${encodeURIComponent(q)}`).then((r) => setHits(r.results)), 250);
+    return () => clearTimeout(t);
+  }, [q, searchable]);
+  const tell = async (h: Hit, liked: boolean) => {
+    await api("/taste/told", { body: { tmdb_id: h.tmdb_id, media_type: h.media_type, liked } });
+    setDone((d) => ({ ...d, [`${h.media_type}-${h.tmdb_id}`]: liked ? "liked" : "disliked" }));
+    onTold(liked);
+  };
+  const shown = searchable ? hits : [];
+  return (
+    <div className="search">
+      <label className="glass search-box">
+        <Search size={18} />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Something you watched anywhere: a show or a movie" aria-label="Tell Telly about something you watched" />
+        {q && (
+          <button className="icon-btn ghost" aria-label="Clear" onClick={() => setQ("")}>
+            <X size={16} />
+          </button>
+        )}
+      </label>
+      {shown.length > 0 && (
+        <ul className="glass search-results inline">
+          {shown.map((h) => {
+            const state = done[`${h.media_type}-${h.tmdb_id}`];
+            return (
+              <li key={`${h.media_type}-${h.tmdb_id}`} className="search-row">
+                <span className="search-name">
+                  {h.name} <span className="muted">{h.year} · {h.media_type === "tv" ? "show" : "movie"}</span>
+                </span>
+                <span className="tell-actions">
+                  <button className="btn btn-small" aria-pressed={state === "liked"} onClick={() => tell(h, true)} disabled={!!state}>
+                    <ThumbsUp size={14} /> {state === "liked" ? "Added" : "Liked it"}
+                  </button>
+                  <button className="btn btn-small ghost" onClick={() => tell(h, false)} disabled={!!state} aria-label={`Didn't like ${h.name}`}>
+                    <ThumbsDown size={14} /> {state === "disliked" ? "Noted" : ""}
+                  </button>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 // IMDb has no API or sign-in for personal data, so its CSV export is the only way in.
 export function ImdbImport({ onImported }: { onImported?: () => void }) {

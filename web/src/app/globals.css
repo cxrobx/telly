@@ -417,6 +417,10 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .taste-import { display: grid; gap: 10px; padding: 16px 0 12px; justify-items: start; }
 .taste-steps { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: var(--ink-2); }
 .taste-upload { cursor: pointer; flex: none; }
+.starter-card { padding: 20px 22px; display: grid; gap: 4px; border-radius: var(--r-lg); background: linear-gradient(180deg, rgba(18, 18, 26, 0.5), rgba(18, 18, 26, 0.3)); }
+.starter-head { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
+.starter-sub { margin: 6px 0 0; max-width: 62ch; }
+.starter-card a { color: var(--accent); }
 .imdb-card { padding: 18px 20px; display: grid; gap: 10px; border-radius: var(--r-lg); background: linear-gradient(180deg, rgba(18, 18, 26, 0.5), rgba(18, 18, 26, 0.3)); }
 .taste-import-head { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; width: 100%; }
 .taste-import-head > div { flex: 1 1 320px; display: grid; gap: 8px; }

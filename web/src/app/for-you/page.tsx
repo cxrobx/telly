@@ -115,7 +115,10 @@ export default function ForYouPage() {
       {loading || !data ? (
         <Skeleton rows={3} />
       ) : picks.length === 0 ? (
-        <Empty>No picks yet. They&apos;re rebuilt every night from your Plex history.</Empty>
+        <Empty>
+          No picks yet. Tell Telly a few things you liked on <Link href="/taste">Your taste</Link> and they&apos;re built in about a
+          minute; after that they refresh every night.
+        </Empty>
       ) : (
         <div className="picks-grid" role="list" aria-label="Recommendations">
           {picks.map((p) => (

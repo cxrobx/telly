@@ -362,3 +362,35 @@ def test_record_taste_finds_the_title_and_records_it_for_the_caller(client, monk
         from telly.models import TasteSignal
         assert s.get(TasteSignal, (BOB, 9480, "movie", "told")) is not None
         assert s.get(TasteSignal, (ALICE, 9480, "movie", "told")) is None
+
+
+def test_telling_plexbot_a_first_like_builds_first_picks_now(client, monkeypatch):
+    from telly import llm, mcp_server, recs
+    from telly.models import Recommendation
+
+    class TMDB:
+        def search_multi(self, q):
+            return [{"id": 1438, "media_type": "tv", "name": "The Wire", "first_air_date": "2002-06-02"}]
+
+        def tv(self, i):
+            return {"name": "The Wire"}
+
+        def recommendations(self, media_type, tmdb_id):
+            return [{"id": 1100, "name": "Like The Wire", "vote_count": 900, "vote_average": 8.0}]
+
+        def trending(self, media_type, window="week"):
+            return []
+
+    monkeypatch.setattr(mcp_server, "TMDBClient", TMDB)
+    monkeypatch.setattr(recs, "TMDBClient", TMDB)
+    monkeypatch.setattr(llm, "available", lambda: False)
+    started = []
+    monkeypatch.setattr(recs, "warm_in_background", lambda pid: started.append(recs.warm(pid)))
+    with db.session_scope() as s:
+        s.get(User, BOB).overseerr_id = 2
+    out = call(client, tok("discord", "d-bob"), "record_taste", title="the wire", liked=True)
+    assert started == [True] and "first picks" in out["note"]
+    with db.session_scope() as s:
+        assert [r.title for r in s.query(Recommendation).filter_by(plex_id=BOB)] == ["Like The Wire"]
+    out = call(client, tok("discord", "d-bob"), "record_watched", tmdb_id=1438, media_type="tv")
+    assert started == [True] and out["note"] == "Picks update in tonight's refresh."  # has picks now

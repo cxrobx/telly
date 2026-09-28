@@ -355,3 +355,31 @@ def test_members_without_overseerr_get_no_nightly_run(people, monkeypatch):
     assert set(out) == {A}
     assert not list(people.scalars(select(Recommendation).where(Recommendation.plex_id == B)))
 
+
+
+# ── a new member, before any taste ──────────────────────────────────────
+
+
+def test_no_taste_still_gets_trending_but_no_picks(s, monkeypatch):
+    monkeypatch.setattr(llm, "available", lambda: False)
+    s.add(User(plex_id=A, pms_account_id=A, username="new", overseerr_id=1))
+    s.commit()
+    tmdb = FakeTMDB({}, trending={"tv": [rec(90, "Big Show")], "movie": [rec(91, "Big Movie")]})
+    assert recs.build_for(s, tmdb, A, tmdb._trending) == 0
+    assert recs.for_user(s, A) == []
+    assert {p["title"] for p in recs.trending_for_user(s, A)} == {"Big Show", "Big Movie"}
+
+
+def test_first_build_only_while_they_have_no_picks(people):
+    new = 333
+    people.add(User(plex_id=new, pms_account_id=new, username="new", overseerr_id=3))
+    people.commit()
+    assert recs.needs_warm(people, A)  # history, no picks yet
+    assert recs.needs_warm(people, new)  # no taste: Trending, once
+    people.add(recs.TrendingPick(plex_id=new, tmdb_id=90, media_type="tv", rank=1, score=1, title="T"))
+    people.add(Recommendation(plex_id=A, tmdb_id=90, media_type="tv", rank=1, score=1, title="P"))
+    people.get(User, B).overseerr_id = None  # the nightly run skips them, so this does too
+    people.commit()
+    assert not recs.needs_warm(people, new)
+    assert not recs.needs_warm(people, A)
+    assert not recs.needs_warm(people, B)

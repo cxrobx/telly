@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import math
+import threading
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -310,9 +311,16 @@ def trending_reason(c: Candidate, fresh: bool, today: date) -> str:
 def build_for(s: Session, tmdb: TMDBClient, plex_id: int,
               trending: dict[str, list[dict]]) -> int:
     seeds = seeds_for(s, plex_id)
-    if not seeds:
-        return 0
     ranked = candidates(s, tmdb, plex_id, seeds, trending)
+    library = set(s.execute(select(LibraryItem.tmdb_id, LibraryItem.media_type)).all())
+    if not seeds:
+        # Nothing to go on yet (a new member): no picks, and any they had stay, but Trending
+        # still fills on buzz × freshness alone, so their home page isn't empty.
+        shown = set(s.execute(select(Recommendation.tmdb_id, Recommendation.media_type).where(
+            Recommendation.plex_id == plex_id, Recommendation.rank <= HOME_PICKS)).all())
+        _store_trending(s, plex_id, trending_for(ranked, shown), library)
+        s.flush()
+        return 0
     shortlist = ranked[:SHORTLIST]
     # Without Haiku, a pick that was already on their list keeps the reason it had (often
     # Haiku's) rather than dropping to the template.
@@ -320,7 +328,6 @@ def build_for(s: Session, tmdb: TMDBClient, plex_id: int,
         select(Recommendation).where(Recommendation.plex_id == plex_id)) if r.reason}
     picked = rerank(seeds, shortlist) or [
         (c, before.get((c.tmdb_id, c.media_type)) or template_reason(c)) for c in shortlist[:KEEP]]
-    library = set(s.execute(select(LibraryItem.tmdb_id, LibraryItem.media_type)).all())
     s.execute(delete(Recommendation).where(Recommendation.plex_id == plex_id))
     now = utcnow()
     for rank, (c, reason) in enumerate(picked, 1):
@@ -330,16 +337,75 @@ def build_for(s: Session, tmdb: TMDBClient, plex_id: int,
             backdrop_path=c.backdrop_path, overview=c.overview, reason=reason,
             because=_because(c), trending=c.trending, anime=c.anime,
             in_library=(c.tmdb_id, c.media_type) in library, generated_at=now))
+    _store_trending(s, plex_id, trending_for(
+        ranked, {(c.tmdb_id, c.media_type) for c, _ in picked[:HOME_PICKS]}), library)
+    s.flush()
+    return len(picked)
+
+
+def _store_trending(s: Session, plex_id: int, rows: list[tuple[Candidate, float, str]],
+                    library: set[tuple[int, str]]) -> None:
     s.execute(delete(TrendingPick).where(TrendingPick.plex_id == plex_id))
-    for rank, (c, score, reason) in enumerate(
-            trending_for(ranked, {(c.tmdb_id, c.media_type) for c, _ in picked[:HOME_PICKS]}), 1):
+    now = utcnow()
+    for rank, (c, score, reason) in enumerate(rows, 1):
         s.add(TrendingPick(
             plex_id=plex_id, tmdb_id=c.tmdb_id, media_type=c.media_type, rank=rank,
             score=round(score, 4), title=c.title, year=c.year, poster_path=c.poster_path,
             backdrop_path=c.backdrop_path, overview=c.overview, reason=reason,
             in_library=(c.tmdb_id, c.media_type) in library, generated_at=now))
-    s.flush()
-    return len(picked)
+
+
+# ── First build, right away ───────────────────────────────────────────────
+# A new member shouldn't wait for 04:10 to see anything. When they sign in, or first tell
+# Telly what they like, their picks are built at once, in the background. Only while they
+# have none: after that the nightly run owns them. One build at a time per person, and only
+# for members the nightly run covers (an Overseerr account; see build_all).
+
+_warming: set[int] = set()
+_warm_lock = threading.Lock()
+
+
+def warming(plex_id: int) -> bool:
+    return plex_id in _warming
+
+
+def needs_warm(s: Session, plex_id: int) -> bool:
+    u = s.get(User, plex_id)
+    if u is None or u.removed_at is not None or u.overseerr_id is None:
+        return False
+    if s.scalar(select(Recommendation.plex_id).where(Recommendation.plex_id == plex_id).limit(1)):
+        return False
+    if seeds_for(s, plex_id):
+        return True
+    # no taste yet: only Trending can be built, so once is enough
+    return s.scalar(select(TrendingPick.plex_id).where(TrendingPick.plex_id == plex_id).limit(1)) is None
+
+
+def warm(plex_id: int, tmdb: TMDBClient | None = None) -> bool:
+    """Build one person's picks now if they still need them. Call it after their change is
+    committed: it reads in a session of its own."""
+    from .db import session_scope  # db → config; kept out of the module's import path
+    with _warm_lock:
+        if plex_id in _warming:
+            return False
+        _warming.add(plex_id)
+    try:
+        with session_scope() as s:
+            if not needs_warm(s, plex_id):
+                return False
+            tmdb = tmdb or TMDBClient()
+            build_for(s, tmdb, plex_id, {"tv": tmdb.trending("tv"), "movie": tmdb.trending("movie")})
+        return True
+    except Exception as e:  # noqa: BLE001 — the nightly run is the fallback
+        log.warning("first picks failed for %s: %s", plex_id, e)
+        return False
+    finally:
+        with _warm_lock:
+            _warming.discard(plex_id)
+
+
+def warm_in_background(plex_id: int) -> None:
+    threading.Thread(target=warm, args=(plex_id,), daemon=True, name=f"warm-{plex_id}").start()
 
 
 def build_all(s: Session, tmdb: TMDBClient) -> dict[int, int]:

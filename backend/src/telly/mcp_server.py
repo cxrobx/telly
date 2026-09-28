@@ -172,7 +172,7 @@ async def record_taste(ctx: Context, title: str, liked: bool = True, year: int |
             return {"ambiguous": True, "candidates": found["candidates"][:5]} if found["candidates"] \
                 else {"error": f"Nothing on TMDB matches {title!r}."}
         p = found["pick"]
-        out = taste.record(s, tmdb, pid, p["tmdb_id"], p["media_type"], liked)
+        out = _first_picks(s, pid, taste.record(s, tmdb, pid, p["tmdb_id"], p["media_type"], liked))
         out["year"] = p["year"]
         others = [c for c in found["candidates"] if c is not p][:3]
         if others:
@@ -199,5 +199,15 @@ async def record_watched(ctx: Context, tmdb_id: int, media_type: str, liked: boo
     ambiguous, or to correct its pick). liked=false means never suggest anything because of it."""
     if media_type not in ("tv", "movie"):
         return json.dumps({"error": "media_type must be tv or movie"})
-    return await _run(ctx, lambda s, pid: taste.record(s, TMDBClient(), pid, tmdb_id, media_type, liked))
+    return await _run(ctx, lambda s, pid: _first_picks(
+        s, pid, taste.record(s, TMDBClient(), pid, tmdb_id, media_type, liked)))
+
+
+def _first_picks(s, pid: int, out: dict) -> dict:
+    """Someone with no picks yet told Telly what they like: build them now, not tonight."""
+    if out.get("liked") and recs.needs_warm(s, pid):
+        s.commit()  # the build reads in its own session
+        recs.warm_in_background(pid)
+        out["note"] = "Building their first picks now: on Telly's home page in about a minute."
+    return out
 

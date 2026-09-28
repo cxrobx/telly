@@ -34,6 +34,8 @@ class User(Base):
     plex_token_enc: Mapped[str | None] = mapped_column(String)
     signed_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     overseerr_id: Mapped[int | None] = mapped_column(Integer)  # for Request, when they have one
+    # The home page's "tell Telly what you like" card, closed by them (it also goes once they have taste)
+    taste_prompt_dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Title(Base):
