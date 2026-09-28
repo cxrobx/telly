@@ -1,6 +1,6 @@
 # Telly — memory spec
 
-Status: **draft for Chris's review (2026-09-27).** The open questions are in §10, each with a recommendation.
+Status: **approved by Chris 2026-09-27**, with the recommendation taken on all four questions (§10). Built the same day.
 
 Telly already remembers what people **watch** and **like**: plays, follows, thumbs, the Your taste
 page. plexbot reads all of that through Telly's tools. What nothing remembers is what people

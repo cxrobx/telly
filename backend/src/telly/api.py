@@ -18,7 +18,7 @@ from itsdangerous import BadSignature, URLSafeTimedSerializer
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
-from . import plexbot, recs, shows, taste
+from . import memory, plexbot, recs, shows, taste
 from .clients.overseerr import OverseerrClient
 from .clients.plextv import PlexTV
 from .clients.tmdb import TMDBClient
@@ -362,6 +362,55 @@ def taste_told(body: ToldIn, background: BackgroundTasks, pid: int = Me) -> dict
     if body.liked:
         background.add_task(recs.warm, pid)  # runs after the commit above
     return {"ok": True, "title": name, "liked": body.liked}
+
+
+# ── Memory (docs/spec-memory.md): the caller's own, and nobody else's ──────────
+
+
+@router.get("/memories")
+def memories(pid: int = Me) -> dict:
+    with session_scope() as s:
+        return {"memories": memory.listing(s, pid), "max": memory.MAX_PER_PERSON,
+                "max_len": memory.MAX_LEN}
+
+
+class MemoryIn(BaseModel):
+    text: str
+    kind: Literal["preference", "setup", "plan"]
+
+
+def _save_memory(pid: int, body: MemoryIn, replaces: int | None = None) -> dict:
+    try:
+        with session_scope() as s:
+            return {"memory": memory.save(s, pid, body.text, body.kind, "web", replaces)}
+    except memory.MemoryNotFound as e:  # someone else's id reads as missing, like a bad one
+        raise HTTPException(404, str(e)) from None
+    except memory.MemoryError as e:
+        raise HTTPException(400, str(e)) from None
+
+
+@router.post("/memories")
+def add_memory(body: MemoryIn, pid: int = Me) -> dict:
+    return _save_memory(pid, body)
+
+
+@router.post("/memories/{memory_id}/edit")
+def edit_memory(memory_id: int, body: MemoryIn, pid: int = Me) -> dict:
+    return _save_memory(pid, body, replaces=memory_id)
+
+
+@router.post("/memories/{memory_id}/delete")
+def delete_memory(memory_id: int, pid: int = Me) -> dict:
+    with session_scope() as s:
+        if not memory.forget(s, pid, memory_id):
+            raise HTTPException(404, "No such memory.")
+    return {"ok": True}
+
+
+@router.post("/memories/clear")
+def clear_memories(pid: int = Me) -> dict:
+    with session_scope() as s:
+        return {"deleted": memory.forget_all(s, pid)}
 
 
 @router.get("/search/titles")

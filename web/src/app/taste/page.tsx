@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { useBackdrop } from "@/components/backdrop";
 import { Empty, Poster, Section, Skeleton } from "@/components/ui";
 import { ImdbImport, Tell } from "@/components/taste";
+import { Memories } from "@/components/memories";
 import { api, backdrop, useApi } from "@/lib/api";
 
 type Item = {
@@ -82,6 +83,10 @@ export default function TastePage() {
 
       <Section title="IMDb">
         <ImdbImport onImported={reload} />
+      </Section>
+
+      <Section title="What Telly remembers">
+        <Memories />
       </Section>
 
       {loading || !data ? (

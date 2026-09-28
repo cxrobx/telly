@@ -16,7 +16,7 @@ import anyio
 from sqlalchemy import select
 from mcp.server.mcpserver import Context, MCPServer
 
-from . import recs, shows, taste
+from . import memory, recs, shows, taste
 from .clients.tmdb import TMDBClient
 from .config import get_settings
 from .db import session_scope
@@ -211,3 +211,59 @@ def _first_picks(s, pid: int, out: dict) -> dict:
         out["note"] = "Building their first picks now: on Telly's home page in about a minute."
     return out
 
+
+
+# ── Memory (docs/spec-memory.md) ─────────────────────────────────────────────
+
+
+@mcp.tool()
+async def my_memories(ctx: Context) -> str:
+    """What the caller has told you about themselves before: preferences, their setup, plans.
+    plexbot already puts these in your prompt each turn; call this when they ask "what do you
+    remember about me?" or you need the ids fresh."""
+    return await _run(ctx, lambda s, pid: {"memories": memory.listing(s, pid)})
+
+
+@mcp.tool()
+async def remember(ctx: Context, text: str, kind: str, replaces: int | None = None,
+                   they_asked: bool = False) -> str:
+    """Save one lasting fact about the caller, in a short line close to their words (under 200
+    characters). kind: "preference" ("prefers subs to dubs for anime"), "setup" ("watches on
+    the living-room Apple TV; bedroom TV can't play 4K") or "plan" ("watching Bleach
+    canon-only, around episode 40"; plans are dropped after 60 days unless saved again).
+    replaces: the id of their memory this updates (e.g. the plan's new episode), instead of
+    adding a near-duplicate. they_asked: true when they said "remember…".
+    Save only what lasts: not tonight's mood, not a one-off request, not what they watched or
+    rated (record_taste does that). Never: contact details, credentials, payment details,
+    anything about another person on the server, or anything sensitive (health, religion,
+    politics, sexuality). Always tell them in a few words that you saved it."""
+    return await _run(ctx, lambda s, pid: _saved(
+        lambda: memory.save(s, pid, text, kind, "told" if they_asked else "chat", replaces)))
+
+
+@mcp.tool()
+async def forget(ctx: Context, memory_id: int) -> str:
+    """Delete one of the caller's memories by its id ("forget that I…", or a saved fact that's
+    no longer true and has no replacement)."""
+    return await _run(ctx, lambda s, pid: {"forgotten": memory_id} if memory.forget(s, pid, memory_id)
+                      else {"error": f"There's no memory {memory_id}."})
+
+
+@mcp.tool()
+async def forget_everything(ctx: Context, confirm_count: int) -> str:
+    """Delete ALL of the caller's memories. First tell them how many there are and ask them to
+    confirm; then call this with that number. A count that doesn't match deletes nothing."""
+    def run(s, pid):
+        n = len(memory.listing(s, pid))
+        if confirm_count != n:
+            return {"deleted": 0, "they_have": n,
+                    "error": f"They have {n} memories, not {confirm_count}. Confirm that number with them."}
+        return {"deleted": memory.forget_all(s, pid)}
+    return await _run(ctx, run)
+
+
+def _saved(save: Callable[[], dict]) -> dict:
+    try:
+        return {"saved": save()}
+    except memory.MemoryError as e:
+        return {"error": str(e)}

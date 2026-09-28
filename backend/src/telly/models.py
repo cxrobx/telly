@@ -325,3 +325,20 @@ class ImdbRow(Base):
     tmdb_id: Mapped[int | None] = mapped_column(Integer)
     media_type: Mapped[str | None] = mapped_column(String)
     match: Mapped[str] = mapped_column(String, default="pending")  # pending | matched | none | skipped
+
+
+class Memory(Base):
+    """Something a person told Telly or plexbot about themselves (docs/spec-memory.md): a
+    preference, their setup, or a plan. One short line; only ever read or changed through a
+    request that resolves to their own plex_id. Never in logs, tests or the repo."""
+
+    __tablename__ = "memories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    plex_id: Mapped[int] = mapped_column(ForeignKey("users.plex_id"), index=True)
+    kind: Mapped[str] = mapped_column(String)  # preference | setup | plan
+    text: Mapped[str] = mapped_column(String)
+    source: Mapped[str] = mapped_column(String)  # chat | told | web
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # plans only

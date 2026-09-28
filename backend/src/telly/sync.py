@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from . import memory
 from .clients.plex import PlexClient, tmdb_id_from_guids
 from .models import Follow, Play, PlexItem, Title, User, utcnow
 
@@ -49,6 +50,7 @@ def sync_users(s: Session, plex: PlexClient, report: SyncReport) -> None:
     for u in s.scalars(select(User).where(User.removed_at.is_(None))):
         if u.plex_id not in present:  # removed from the server (spec §8)
             u.removed_at = utcnow()
+            memory.forget_all(s, u.plex_id)  # their memories go with them (spec-memory §8)
             report.removed.append(u.plex_id)
     report.users = len(present)
     s.flush()

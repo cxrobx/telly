@@ -425,6 +425,30 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .taste-import-head { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; width: 100%; }
 .taste-import-head > div { flex: 1 1 320px; display: grid; gap: 8px; }
 .group-note { margin: -6px 0 12px; }
+/* What Telly remembers (components/memories.tsx) */
+.memory-card { padding: 18px 20px; display: grid; gap: 14px; border-radius: var(--r-lg); background: linear-gradient(180deg, rgba(18, 18, 26, 0.5), rgba(18, 18, 26, 0.3)); }
+.memory-card > p { margin: 0; }
+.memory-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.memory-row { display: flex; align-items: flex-start; gap: 12px; padding: 11px 0; border-top: 1px solid var(--hair); }
+.memory-row:first-child { border-top: 0; }
+.memory-row.editing { display: block; }
+.memory-row > .chip { flex: none; min-width: 86px; justify-content: center; }
+.memory-text { flex: 1; min-width: 0; display: grid; gap: 2px; overflow-wrap: anywhere; }
+.memory-meta { font-size: 12px; }
+.memory-actions { display: flex; gap: 2px; flex: none; margin-top: -4px; }
+.memory-actions .icon-btn { width: 32px; height: 32px; }
+.memory-form { display: grid; gap: 8px; }
+.memory-kinds { display: flex; gap: 6px; flex-wrap: wrap; }
+.memory-kind[data-on="true"] { background: var(--accent-soft); color: var(--accent); border-color: rgba(245, 181, 68, 0.35); }
+.memory-input-row { display: flex; gap: 8px; align-items: center; }
+.memory-input {
+  flex: 1; min-width: 0; font: inherit; font-size: 15px; color: var(--ink); padding: 10px 14px; border-radius: 12px; outline: none;
+  background: rgba(255, 255, 255, 0.06); border: 1px solid var(--glass-edge); transition: border-color 0.2s, background-color 0.2s;
+}
+.memory-input:focus { border-color: rgba(245, 181, 68, 0.6); background: rgba(255, 255, 255, 0.08); }
+.memory-input::placeholder { color: var(--ink-3); }
+.memory-clear { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.memory-clear-btn { justify-self: start; color: var(--ink-3); }
 .taste-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 @media (max-width: 480px) { .taste-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .taste-card[data-off="true"] > * { opacity: 0.5; filter: saturate(0.25); }  /* children: the card's own opacity is held by its arrival animation */

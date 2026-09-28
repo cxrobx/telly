@@ -14,7 +14,7 @@ from .clients.overseerr import OverseerrClient
 from .clients.plextv import PlexTV
 from .plexdata import PlexDataReport, sync_library, sync_overseerr_ids, sync_watchlists
 from .poll import PollReport, poll
-from . import ratings, recs, renewals, taste
+from . import memory, ratings, recs, renewals, taste
 from .sync import SyncReport, infer_follows, sync_history, sync_users
 
 log = logging.getLogger(__name__)
@@ -99,12 +99,20 @@ def run_ratings(force: bool = False) -> ratings.RatingsReport:
     return report
 
 
+def run_memory_purge() -> int:
+    """Plans past their 60 days (spec-memory §8)."""
+    with session_scope() as s:
+        n = memory.purge_expired(s)
+    log.info("memory: %d expired plans dropped", n)
+    return n
+
+
 def run_all() -> tuple:
     """Nightly: history (new shows become titles) and watchlists (new follows) first, then
     poll, then infer follows (needs each show's aired-episode count from the poll), then
     alerts, then recommendations (needs the library and watchlists)."""
     return (run_sync(), run_plexdata(), run_poll(), run_infer(), run_deliver(), run_recs(),
-            run_ratings())
+            run_ratings(), run_memory_purge())
 
 
 def run_hot() -> tuple[PollReport, DeliveryReport]:
