@@ -6,9 +6,14 @@ import "./globals.css";
 const sans = Geist({ variable: "--font-sans", subsets: ["latin"] });
 const display = Poppins({ variable: "--font-display", weight: ["600", "700"], subsets: ["latin"] });
 
+const description = "What to watch next, and what's coming for the shows you love.";
+
+// og:image (app/opengraph-image.jpg) must be an absolute URL, or iMessage shows no card.
 export const metadata: Metadata = {
+  metadataBase: new URL("https://telly.chrisx.art"),
   title: "Telly",
-  description: "What to watch next, and what's coming for the shows you love.",
+  description,
+  openGraph: { type: "website", siteName: "Telly", title: "Telly", description },
 };
 
 export const viewport: Viewport = { themeColor: "#07070b", colorScheme: "dark" };
