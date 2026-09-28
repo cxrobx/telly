@@ -16,7 +16,17 @@ export const metadata: Metadata = {
   openGraph: { type: "website", siteName: "Telly", title: "Telly", description },
 };
 
-export const viewport: Viewport = { themeColor: "#07070b", colorScheme: "dark" };
+// Zoom is locked. Without this, a phone zooms the page in on a tap or a field taking focus and
+// leaves it there. Safari ignores userScalable, so globals.css holds the other half: fields at
+// 16px (its real trigger for the focus zoom) and touch-action against the double-tap zoom.
+export const viewport: Viewport = {
+  themeColor: "#07070b",
+  colorScheme: "dark",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (

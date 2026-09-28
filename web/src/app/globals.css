@@ -54,6 +54,15 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 10px; }
 ::selection { background: var(--accent-soft); }
 
+/* ── zoom lock ────────────────────────────────────────────────────────────
+   The other half of layout.tsx's viewport export, because iOS ignores user-scalable=no.
+   Every field that takes typing is 16px: under that, Safari zooms the whole page in when one
+   takes focus and never zooms back out (plexbot's chat input is 16px for the same reason).
+   touch-action drops the double-tap zoom the meta tag can't. Pinch still zooms on iOS
+   whatever we ask for — that's the way back out, and it's fine. */
+html, body { touch-action: manipulation; }
+input, textarea, select { font: inherit; font-size: 16px; }
+
 /* ── the backdrop ─────────────────────────────────────────────────────── */
 .backdrop-root { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; background: var(--bg); }
 .backdrop-layer {
@@ -326,7 +335,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .search { position: relative; margin: 14px 0 6px; z-index: 5; }
 .search-box { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 999px; color: var(--ink-2); }
 .search-box:focus-within { border-color: rgba(245, 181, 68, 0.45); }
-.search-box input { flex: 1; min-width: 0; background: none; border: 0; color: var(--ink); font-size: 15px; outline: none; }
+.search-box input { flex: 1; min-width: 0; background: none; border: 0; color: var(--ink); outline: none; }
 .search-box input::placeholder { color: var(--ink-3); }
 .search-results { position: absolute; left: 0; right: 0; top: calc(100% + 8px); list-style: none; margin: 0; padding: 6px; border-radius: var(--r-lg); background: rgba(18, 18, 26, 0.86); }
 .search-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; }
@@ -442,7 +451,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .memory-kind[data-on="true"] { background: var(--accent-soft); color: var(--accent); border-color: rgba(245, 181, 68, 0.35); }
 .memory-input-row { display: flex; gap: 8px; align-items: center; }
 .memory-input {
-  flex: 1; min-width: 0; font: inherit; font-size: 15px; color: var(--ink); padding: 10px 14px; border-radius: 12px; outline: none;
+  flex: 1; min-width: 0; color: var(--ink); padding: 10px 14px; border-radius: 12px; outline: none;
   background: rgba(255, 255, 255, 0.06); border: 1px solid var(--glass-edge); transition: border-color 0.2s, background-color 0.2s;
 }
 .memory-input:focus { border-color: rgba(245, 181, 68, 0.6); background: rgba(255, 255, 255, 0.08); }
