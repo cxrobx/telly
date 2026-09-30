@@ -56,6 +56,14 @@ npm run dev -- -p 3940      # proxies /api/* to :8940
 `uv run pytest -q` runs the backend tests. Every setting is in
 [`backend/src/telly/config.py`](backend/src/telly/config.py) (env prefix `TELLY_`).
 
+## License
+
+[Business Source License 1.1](LICENSE), © 2026 CX Ventures LLC. The source is
+available and you may use it personally or inside your own organisation.
+Selling it, hosting it for others or bundling it into a commercial product
+needs a commercial licence. Each version becomes Apache-2.0 on 2030-09-30 or
+four years after its release, whichever comes first.
+
 ## Status
 
 A personal project, shared as-is. [`CLAUDE.md`](CLAUDE.md) is the working notes for the
