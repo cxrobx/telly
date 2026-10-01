@@ -110,6 +110,7 @@ scripts/nas-env.sh     # (re)writes /volume2/docker/telly/.env from the Keychain
 
 ## Gotchas
 
+- **requests.chrisx.art runs Seerr, not Overseerr** (migrated in place 2026-09-30, NAS container `seerr` on :5055). The code still says Overseerr (`overseerr_url`, `users.overseerr_id`, `clients/overseerr.py`) on purpose: Seerr kept the `/api/v1` shapes, `X-API-User`, the user ids, `plexId` and the API key, so nothing needed renaming.
 - PMS history only goes back to **2025-02-26** (799 plays). That's the whole taste signal until Trakt import exists.
 - TMDB lags real-world renewals (SNW S5, Fallout S3). The weekly news check covers it. The two-poll rule trades a day of delay for no flip-flop alerts.
 - **mcp SDK 2.x:** the transport's default allowed hosts are localhost only (plexbot's calls to `192.168.4.22` would get a 421), so Telly passes `mcp_allowed_hosts`. And `session_manager.run()` works once per instance.
