@@ -18,6 +18,7 @@ from .config import get_settings
 from .db import session_scope
 from .api import router as api_router
 from .jobs import run_all, run_hot, run_renewals
+from .logredact import install as install_log_redaction
 from .mcp_server import mcp
 from .models import Event, Follow, Play, Title, User
 from .requester import bearer, verify
@@ -38,6 +39,7 @@ def _mcp_transport():
 
 
 def create_app() -> FastAPI:
+    install_log_redaction()  # also under a bare `uvicorn telly.app:app`, not only `telly serve`
     mcp_app = _mcp_transport()
     session_manager = mcp.session_manager  # the one mcp_app just created
 

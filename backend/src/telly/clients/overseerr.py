@@ -1,4 +1,5 @@
-"""Overseerr: user id → plexId. Shape verified live 2026-09-27 (spec §2)."""
+"""Seerr (Overseerr until 2026-09-30, same API): user id → plexId. Shape verified live 2026-09-27
+(spec §2) and against Seerr 3.5.0 on 2026-09-30."""
 
 from __future__ import annotations
 
@@ -41,7 +42,7 @@ class OverseerrClient:
                 msg = r.json().get("message") or r.text
             except ValueError:
                 msg = r.text
-            raise RuntimeError(f"Overseerr {r.status_code}: {msg[:200]}")
+            raise RuntimeError(f"Seerr {r.status_code}: {msg[:200]}")
         d = r.json()
         return {"status": d.get("status"), "id": d.get("id")}
 

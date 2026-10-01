@@ -254,7 +254,7 @@ def request_title(body: RequestIn, pid: int = Me) -> dict:
     with session_scope() as s:
         oid = s.get(User, pid).overseerr_id
     if oid is None:
-        raise HTTPException(400, "You don't have an Overseerr account yet. Ask Chris for one.")
+        raise HTTPException(400, "You don't have a Seerr account yet. Ask Chris for one.")
     try:
         return OverseerrClient().request(oid, body.media_type, body.tmdb_id)
     except RuntimeError as e:
@@ -500,7 +500,7 @@ def plexbot_token(pid: int = Me) -> dict:
         u = s.get(User, pid)
         oid, name = u.overseerr_id, u.username
     if oid is None:
-        raise HTTPException(404, "No Overseerr account, so no plexbot chat.")
+        raise HTTPException(404, "No Seerr account, so no plexbot chat.")
     return {"token": plexbot.mint(oid, name), "id": str(oid), "name": name,
             "chat_url": cfg.plexbot_chat_url, "expires_in": plexbot.TTL}
 

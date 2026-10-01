@@ -23,7 +23,7 @@ type Item = {
 // count a little and are the ones most worth switching off.
 const GROUPS: { source: string; title: string; note: string }[] = [
   { source: "imdb_rating", title: "Your IMDb ratings", note: "7 and up shape your picks; 4 and under count against." },
-  { source: "overseerr", title: "Requested in Overseerr", note: "Counts a little: a request can be a try-out or for a friend." },
+  { source: "overseerr", title: "Requested in Seerr", note: "Counts a little: a request can be a try-out or for a friend." },
   { source: "mentioned", title: "Came up in plexbot chats", note: "Counts a little: mostly fix-it questions, not reviews." },
   { source: "imdb_watchlist", title: "Your IMDb watchlist", note: "Never shapes picks; just isn't recommended back to you." },
 ];

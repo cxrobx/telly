@@ -35,7 +35,7 @@ mcp = MCPServer(
 UNLINKED = {
     "discord": "Your Discord isn't linked to your Plex yet. Say !link in #plexbot and I'll DM "
                "you a one-time link (takes 30 seconds).",
-    "web": "Your Overseerr account isn't connected to a Plex account on this server.",
+    "web": "Your Seerr account isn't connected to a Plex account on this server.",
 }
 
 
@@ -139,7 +139,7 @@ async def recommend(ctx: Context, media: str = "any", limit: int = 8) -> str:
     """What the caller should watch next, from their own Plex history plus what's trending,
     each with a one-line reason. media: "any", "tv", "movie" or "anime" (Japanese animation,
     shows and movies). in_library=true means it's already on the Plex server; otherwise it can
-    be requested in Overseerr."""
+    be requested in Seerr (requests.chrisx.art)."""
     media = media if media in ("tv", "movie", "anime") else "any"
     return await _run(ctx, lambda s, pid: {"picks": recs.for_user(s, pid, media, min(limit, 20))})
 

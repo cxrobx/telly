@@ -17,8 +17,9 @@ class PlexClient:
         self.http = client or httpx.Client(timeout=20.0)
 
     def _pms(self, path: str, **params) -> dict:
-        r = self.http.get(f"{self.base_url}{path}", params={"X-Plex-Token": self.token, **params},
-                          headers={"Accept": "application/json"})
+        # The token goes in a header, never the URL: httpx logs every request URL at INFO.
+        r = self.http.get(f"{self.base_url}{path}", params=params,
+                          headers={"Accept": "application/json", "X-Plex-Token": self.token})
         r.raise_for_status()
         return r.json().get("MediaContainer", {})
 

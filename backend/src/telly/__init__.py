@@ -15,7 +15,7 @@ def main() -> None:
     pp.add_argument("--hot", action="store_true", help="only shows airing around today")
     sub.add_parser("infer", help="add inferred follows")
     sub.add_parser("deliver", help="send pending alerts")
-    sub.add_parser("plexdata", help="library, watchlists, Overseerr ids")
+    sub.add_parser("plexdata", help="library, watchlists, Seerr ids")
     sub.add_parser("recs", help="rebuild recommendations")
     sub.add_parser("renewals", help="weekly news renewal check (needs headless Claude)")
     pt = sub.add_parser("taste-add", help="record that someone likes a title (e.g. told plexbot)")
@@ -33,6 +33,8 @@ def main() -> None:
     ps.add_argument("--port", type=int, default=8940)
     args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    from .logredact import install
+    install()
 
     if args.cmd == "migrate":
         from alembic import command

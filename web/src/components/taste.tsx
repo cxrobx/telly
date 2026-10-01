@@ -144,7 +144,7 @@ export function TasteSection() {
     { icon: Film, label: "Plex history", value: data?.plex_titles, note: "counts most" },
     { icon: Heart, label: "Liked or loved on History", value: data?.told, note: "counts most" },
     { icon: Star, label: "IMDb ratings", value: data?.imdb_ratings, note: "counts by your score" },
-    { icon: Clapperboard, label: "Overseerr requests", value: data?.overseerr, note: "counts a little" },
+    { icon: Clapperboard, label: "Seerr requests", value: data?.overseerr, note: "counts a little" },
     { icon: MessageCircle, label: "From plexbot chats", value: data?.mentioned, note: "counts a little" },
   ];
   return (
