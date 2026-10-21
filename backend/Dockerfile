@@ -1,6 +1,6 @@
 # Telly API: FastAPI + scheduler + MCP. Node is here only for the Claude Code CLI, which runs
 # headless on the subscription (CLAUDE_CODE_OAUTH_TOKEN) for re-ranking and renewal checks.
-FROM node:22-slim
+FROM node:24-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && \
     npm install -g @anthropic-ai/claude-code && \
