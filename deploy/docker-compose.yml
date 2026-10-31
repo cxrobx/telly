@@ -1,11 +1,11 @@
-# Telly on the NAS: /volume2/docker/telly/ holds this file, src/ (the committed tree, from
-# scripts/deploy.sh), data/ (SQLite) and .env (secrets, never in git).
+# Telly on the NAS: /volume2/docker/telly/ holds this file, data/ (SQLite) and .env (secrets,
+# never in git). scripts/deploy.sh builds both images on the Mac and loads them onto the NAS.
 #
 # Ports: 18940 = API (LAN only; plexbot reaches /mcp here). 18941 = web, the only thing the
 # Cloudflare tunnel routes to (telly.chrisx.art), and it proxies /api/* alone.
 services:
   telly-api:
-    build: ./src/backend
+    image: telly-telly-api:latest
     container_name: telly-api
     restart: unless-stopped
     env_file: .env
@@ -18,10 +18,7 @@ services:
     networks: [telly]
 
   telly-web:
-    build:
-      context: ./src/web
-      args:
-        TELLY_API_URL: http://telly-api:8940
+    image: telly-telly-web:latest
     container_name: telly-web
     restart: unless-stopped
     ports:
