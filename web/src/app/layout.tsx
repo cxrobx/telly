@@ -26,6 +26,9 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  // Without cover, a Home Screen install stops 34 pt short of the bottom edge. With it, the page
+  // runs edge to edge and globals.css keeps its chrome clear with env(safe-area-inset-*).
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
