@@ -106,6 +106,9 @@ scripts/deploy.sh      # ships git archive HEAD, builds beside the live stack, s
 scripts/nas-env.sh     # (re)writes /volume2/docker/telly/.env from the Keychain; nothing printed
 ```
 
+Off the home LAN, or anywhere `ssh nas` has no route: `NAS=nas-ts NAS_HOST=100.88.68.22 scripts/deploy.sh`.
+It builds on the Mac, so `/usr/local/bin` must be on `PATH` for Docker.
+
 - Stack `/volume2/docker/telly`: `telly-api` :18940 (LAN; plexbot calls `http://192.168.4.22:18940/mcp`),
   `telly-web` :18941 (the only port the `nas-tunnel` routes to), subnet `10.230.0.0/24`,
   `data/telly.db` (700/600, the container runs as `cx` 1026:100).
