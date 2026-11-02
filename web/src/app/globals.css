@@ -521,8 +521,10 @@ a.score:hover { color: var(--accent); }
 
 /* ── small screens: the closed iPhone Duo, and anything as tight ─────────────
    Measured on the Duo's outer screen (iOS 27.2 simulator): a page gets 382×580 in Safari and
-   382×678 from the Home Screen. The other 84 of its 466 are iOS's status column. A page can't use
-   them: no inset reports them, and forcing width=466 only clips real content at 382.
+   382×678 from the Home Screen. The other 84 of its 466 are iOS's status column, and no inset
+   reports them. Forcing width=466 clips content at 382 in Safari. From the Home Screen it does
+   draw to 466, but taps there never reach the page's elements and the layout goes 827 tall, which
+   puts fixed elements like the tab bar off screen. So everything stays inside the 382.
    Upright keys on width, not height: Safari's bars can change the height during a scroll, and a
    layout that flips mid-scroll is worse than one that's slightly tight. Sideways needs a height
    test, but nothing that tall comes near the 500 line. */

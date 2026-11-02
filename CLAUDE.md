@@ -86,9 +86,11 @@ Verify UI changes with Playwright at 1440, 390 and 382 (no horizontal overflow o
 
 **The closed iPhone Duo is the tightest screen** (measured in the Duo simulator, iOS 27.2): a page
 gets **382×580 in Safari and 382×678 from the Home Screen** (bottom inset 34), on a 466×678 screen.
-The other 84 is iOS's status column, and Safari's controls in a tab. A page can't use it: no inset
-reports it (the right inset reads 0), and `width=466` only clips real content at 382. So don't chase
-the 466, and don't size for it. `globals.css` has a compact layout under 390 wide and a left tab
+The other 84 is iOS's status column, and Safari's controls in a tab. No inset reports it (the right
+inset reads 0). `width=466` clips content at 382 in Safari and makes the page pan sideways. From the
+Home Screen it does draw to 466, with the clock floating over the page, but in the simulator taps in
+the strip never reached the page's elements, and the layout goes 827 tall, so fixed elements like the
+tab bar land off screen. So keep everything inside the 382 unless that trade changes. `globals.css` has a compact layout under 390 wide and a left tab
 rail for phones held sideways. The compact layout keys on width alone, because Safari's bars can
 change the height mid-scroll. Sideways was checked at emulated sizes, not rotated on the simulator.
 `viewport-fit=cover` is on, so anything pinned to an edge needs its `env(safe-area-inset-*)`.
