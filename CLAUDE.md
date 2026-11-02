@@ -28,7 +28,7 @@ SQLite on purpose: a handful of users, one writer, no extra container on the NAS
 
 ```bash
 cd backend
-uv run pytest -q                 # 186 tests: detection, sync/poll, MCP scoping + /link + alerts, web auth/scoping, recs + first picks, renewals, ratings, taste, history, memory, migrations
+uv run pytest -q                 # 193 tests: detection, sync/poll, MCP scoping + /link + alerts, web auth/scoping, recs + first picks, renewals, ratings, taste, history, memory, migrations
 uv run telly migrate             # alembic upgrade head
 uv run telly run                 # sync → plexdata → poll → infer → deliver → recs (the nightly job, 04:10 ET)
 uv run telly poll --hot          # only shows airing yesterday/today/tomorrow (hourly, then deliver)

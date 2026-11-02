@@ -345,6 +345,23 @@ def test_whats_new_shows_only_the_latest_release_per_show(s):
     ]
 
 
+@pytest.mark.parametrize("last, nxt, airing", [
+    ((3, 10, "2026-10-20"), (3, 11, "2026-11-09"), True),    # weekly, mid-season
+    ((3, 1, "2026-10-30"), (3, 2, "2026-11-30"), True),      # right at the limit
+    ((3, 10, "2026-01-20"), (4, 1, "2027-07-08"), False),    # a dated premiere, months off
+    ((3, 10, "2026-01-20"), (4, 1, "2026-11-09"), False),    # a premiere next week: not yet
+    ((3, 8, "2026-10-20"), (3, 9, "2027-03-01"), False),     # a long break inside a season
+    (None, (1, 1, "2026-11-09"), False),                     # a new show that hasn't started
+    ((3, 10, "2026-10-20"), None, False),                    # nothing scheduled
+])
+def test_airing_means_mid_season_not_merely_dated(last, nxt, airing):
+    from telly.shows import is_airing
+
+    ep = lambda e: e and {"season": e[0], "episode": e[1], "air_date": e[2]}
+    t = Title(tmdb_id=9, media_type="tv", last_episode=ep(last), next_episode=ep(nxt))
+    assert is_airing(t, today=date(2026, 10, 31)) is airing
+
+
 def test_fresh_news_alerts():
     assert renewals._is_old("2026-09-20", today=date(2026, 9, 27)) is False
     assert renewals._is_old("2026-07-01", today=date(2026, 9, 27)) is True

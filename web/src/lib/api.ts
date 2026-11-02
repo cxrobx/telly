@@ -88,6 +88,7 @@ export type Followed = Art & {
   year: number | null;
   status: string | null;
   followed_because: "watchlist" | "inferred" | "manual";
+  airing: boolean;
   next_episode: { season: number; episode: number; air_date: string; name: string } | null;
   last_episode: { season: number; episode: number; air_date: string; name: string } | null;
   next_season: { season: number; air_date: string | null; source: string | null } | null;

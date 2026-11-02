@@ -82,7 +82,8 @@ const ALIVE = new Set(["Returning Series", "In Production", "Planned", "Pilot"])
 function nextLine(s: Followed): { text: string; tone: "accent" | "muted" } {
   if (s.next_episode) {
     const e = s.next_episode;
-    return { text: `${epLabel(e.season, e.episode)} · ${relDay(e.air_date)}`, tone: "accent" };
+    const when = s.airing ? relDay(e.air_date) : fmtDate(e.air_date, { month: "short", day: "numeric", year: "numeric" });
+    return { text: `${epLabel(e.season, e.episode)} · ${when}`, tone: "accent" };
   }
   const n = s.next_season;
   if (n?.air_date) return { text: `Season ${n.season} · ${fmtDate(n.air_date, { month: "short", day: "numeric", year: "numeric" })}`, tone: "accent" };
@@ -94,7 +95,7 @@ function nextLine(s: Followed): { text: string; tone: "accent" | "muted" } {
 }
 
 function statusLabel(s: Followed) {
-  if (s.next_episode) return "Airing";
+  if (s.airing) return "Airing";
   if (s.next_season) return "Renewed";
   return s.status === "Returning Series" ? "Returning" : (s.status ?? "Unknown");
 }
@@ -132,11 +133,12 @@ export default function FollowingPage() {
   const { data, loading, reload, setData } = useApi<{ shows: Followed[] }>("/following");
   const groups = useMemo(() => {
     const shows = data?.shows ?? [];
-    const airing = shows.filter((s) => s.next_episode).sort((a, b) => a.next_episode!.air_date.localeCompare(b.next_episode!.air_date));
+    const airing = shows.filter((s) => s.airing).sort((a, b) => a.next_episode!.air_date.localeCompare(b.next_episode!.air_date));
     const back = shows
-      .filter((s) => !s.next_episode && (ALIVE.has(s.status ?? "") || s.next_season))
+      .filter((s) => !s.airing && (ALIVE.has(s.status ?? "") || s.next_season || s.next_episode))
       .sort((a, b) => {
-        const ad = a.next_season?.air_date ?? "9999", bd = b.next_season?.air_date ?? "9999";
+        const ad = a.next_episode?.air_date ?? a.next_season?.air_date ?? "9999";
+        const bd = b.next_episode?.air_date ?? b.next_season?.air_date ?? "9999";
         return ad.localeCompare(bd) || Number(!a.next_season) - Number(!b.next_season) || a.name.localeCompare(b.name);
       });
     const done = shows.filter((s) => !airing.includes(s) && !back.includes(s));

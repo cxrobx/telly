@@ -57,6 +57,9 @@ def _art(t: Title) -> dict:
     return {"poster_path": t.poster_path, "backdrop_path": t.backdrop_path, "networks": t.networks}
 
 
+AIRING_WITHIN_DAYS = 30  # a longer gap inside a season is a break, not "airing now"
+
+
 def _following(s: Session, plex_id: int) -> dict[int, Follow]:
     return {f.tmdb_id: f for f in s.scalars(select(Follow).where(
         Follow.plex_id == plex_id, Follow.state == "following"))}
@@ -74,6 +77,15 @@ def next_season(s: Session, t: Title) -> dict | None:
     return None
 
 
+def is_airing(t: Title, today: date | None = None) -> bool:
+    """Mid-season: the next episode continues the season already airing and is due soon. TMDB
+    sets next_episode as soon as a premiere is dated, so having one proves nothing."""
+    nxt, last = t.next_episode or {}, t.last_episode or {}
+    if not nxt.get("air_date") or nxt.get("season") != last.get("season"):
+        return False
+    return date.fromisoformat(nxt["air_date"]) <= (today or date.today()) + timedelta(days=AIRING_WITHIN_DAYS)
+
+
 def followed_shows(s: Session, plex_id: int) -> list[dict]:
     follows = _following(s, plex_id)
     scores = lookup(s, [(t, "tv") for t in follows])
@@ -82,6 +94,7 @@ def followed_shows(s: Session, plex_id: int) -> list[dict]:
                                            Title.tmdb_id.in_(follows))).all():
         out.append({"tmdb_id": t.tmdb_id, "name": t.name, "year": t.year, "status": t.status,
                     "followed_because": follows[t.tmdb_id].source,
+                    "airing": is_airing(t),
                     "next_episode": t.next_episode, "last_episode": t.last_episode,
                     "next_season": next_season(s, t), "ratings": scores.get((t.tmdb_id, "tv")),
                     **_art(t)})
