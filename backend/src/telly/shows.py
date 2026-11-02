@@ -138,11 +138,19 @@ def whats_new(s: Session, plex_id: int, days: int = 14) -> list[dict]:
         select(Event, Title)
         .join(Title, (Title.tmdb_id == Event.tmdb_id) & (Title.media_type == "tv"))
         .where(Event.tmdb_id.in_(follows), Event.detected_at >= since)
-        .order_by(Event.detected_at.desc()))
-    return [{"when": aware(ev.detected_at).date().isoformat(), "show": t.name, "kind": ev.kind,
-             "tmdb_id": t.tmdb_id, "payload": ev.payload,
-             "summary": describe(ev.kind, ev.payload, t.name), **_art(t)}
-            for ev, t in rows if not (ev.payload or {}).get("quiet")]  # old news isn't news
+        .order_by(Event.detected_at.desc(), Event.id.desc()))
+    out, released = [], set()
+    for ev, t in rows:
+        if (ev.payload or {}).get("quiet"):  # old news isn't news
+            continue
+        if ev.kind == "episodes_aired":  # only a show's latest release; renewals and the like stay
+            if t.tmdb_id in released:
+                continue
+            released.add(t.tmdb_id)
+        out.append({"when": aware(ev.detected_at).date().isoformat(), "show": t.name, "kind": ev.kind,
+                    "tmdb_id": t.tmdb_id, "payload": ev.payload,
+                    "summary": describe(ev.kind, ev.payload, t.name), **_art(t)})
+    return out
 
 
 def recently_watched(s: Session, plex_id: int, limit: int = 10) -> list[dict]:

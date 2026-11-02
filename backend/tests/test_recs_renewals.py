@@ -319,6 +319,32 @@ def test_old_news_is_recorded_quietly_and_never_alerted(s):
     assert upcoming(s, A)["renewed_no_date"][0]["season"] == 3     # …but on the timeline
 
 
+def test_whats_new_shows_only_the_latest_release_per_show(s):
+    from telly.shows import whats_new
+
+    s.add(User(plex_id=A, pms_account_id=1, username="a"))
+    s.flush()
+    show(s, id=5, name="Fallout")
+    show(s, id=6, name="Lanterns")
+    now = utcnow()
+
+    def ev(tmdb_id, kind, days_ago, key, **payload):
+        s.add(Event(tmdb_id=tmdb_id, kind=kind, payload=payload, dedupe_key=key,
+                    detected_at=now - timedelta(days=days_ago)))
+
+    for ep in (4, 5, 6):
+        ev(5, "episodes_aired", 7 - ep, f"f{ep}", season=2, from_episode=ep, to_episode=ep)
+    ev(5, "renewed", 5, "fr", season=3, via="status")
+    ev(6, "episodes_aired", 2, "l8", season=1, from_episode=8, to_episode=8)
+    s.commit()
+
+    assert [e["summary"] for e in whats_new(s, A)] == [
+        "Fallout S2E6 is out",                 # E4 and E5 are gone…
+        "Lanterns S1E8 is out",                # …each show keeps its own latest…
+        "Fallout was renewed for season 3",    # …and news that isn't a release stays
+    ]
+
+
 def test_fresh_news_alerts():
     assert renewals._is_old("2026-09-20", today=date(2026, 9, 27)) is False
     assert renewals._is_old("2026-07-01", today=date(2026, 9, 27)) is True
