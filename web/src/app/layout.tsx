@@ -26,8 +26,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  // Without cover, a Home Screen install stops 34 pt short of the bottom edge. With it, the page
-  // runs edge to edge and globals.css keeps its chrome clear with env(safe-area-inset-*).
+  // A Home Screen install fills the screen either way, but only cover makes env(safe-area-inset-*)
+  // report anything. Without it the insets read 0 and the tab bar sits on the home indicator.
   viewportFit: "cover",
 };
 

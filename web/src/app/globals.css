@@ -559,15 +559,17 @@ a.score:hover { color: var(--accent); }
 }
 
 /* Upright: a shorter bottom bar, with the chat button in it instead of floating over the page.
-   :has() because the button only exists for members with an Overseerr account. */
+   :has() because the button only exists for members with an Overseerr account.
+   The bar sits inside the 34 pt home indicator inset, 20 pt off the edge as a system tab bar does.
+   Clearing the whole inset would give back everything the shorter bar saves. */
 @media (max-width: 389px) {
   .main { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
-  .bottombar { left: calc(8px + env(safe-area-inset-left)); right: calc(8px + env(safe-area-inset-right)); bottom: calc(6px + env(safe-area-inset-bottom)); padding: 4px; border-radius: 18px; }
+  .bottombar { left: calc(8px + env(safe-area-inset-left)); right: calc(8px + env(safe-area-inset-right)); bottom: max(6px, calc(env(safe-area-inset-bottom) - 14px)); padding: 4px; border-radius: 18px; }
   body:has(.plexbot-fab) .bottombar { padding-right: 48px; }
   .bottom-tab { gap: 1px; font-size: 10px; padding: 4px 0; }
   .bottom-tab svg { width: 18px; height: 18px; }
   .plexbot-fab {
-    right: calc(13px + env(safe-area-inset-right)); bottom: calc(11px + env(safe-area-inset-bottom)); width: 42px; height: 42px;
+    right: calc(13px + env(safe-area-inset-right)); bottom: calc(max(6px, calc(env(safe-area-inset-bottom) - 14px)) + 5px); width: 42px; height: 42px;
     background: rgba(255, 255, 255, 0.07); box-shadow: inset 0 1px 0 var(--glass-hi); -webkit-backdrop-filter: none; backdrop-filter: none;
   }
 }
