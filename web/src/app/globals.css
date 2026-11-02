@@ -166,8 +166,14 @@ input, textarea, select { font: inherit; font-size: 16px; }
   .plexbot-fab { right: calc(18px + env(safe-area-inset-right)); bottom: calc(92px + env(safe-area-inset-bottom)); width: 50px; height: 50px; }
   /* Full screen; the chat's own ✕ closes it. */
   .plexbot-panel { inset: 0; width: auto; height: auto; border-radius: 0; border: 0; z-index: 50;
-    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    /* Top and bottom are the chat's own: env() reaches into the iframe, so padding them here too doubles them. */
+    padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
     background: linear-gradient(180deg, rgba(14, 14, 20, 0.86), rgba(7, 7, 11, 0.92)); }
+  /* With the keyboard up the panel ends at the visual viewport, above Safari's address pill and
+     iOS's accessory bar, and the page would show through the gap. Hide it once the panel has faded
+     in. A wide box-shadow on the panel doesn't work: iOS Safari doesn't paint it. */
+  body:has(.plexbot-panel[data-open="true"]) :is(.topbar, .main, .bottombar, .backdrop-root) {
+    visibility: hidden; transition: visibility 0s linear 0.22s; }
   .plexbot-fab[data-open="true"] { display: none; }
 }
 

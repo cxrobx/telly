@@ -86,8 +86,6 @@ export function PlexbotChat() {
       panel.style.top = `${vv.offsetTop}px`;
       panel.style.bottom = "auto";
       panel.style.height = `${vv.height}px`;
-      // env(safe-area-inset-bottom) is for the home indicator; a keyboard already covers that.
-      panel.style.paddingBottom = vv.height < window.innerHeight - 100 ? "0" : "";
     };
     fit();
     vv.addEventListener("resize", fit);
@@ -98,7 +96,7 @@ export function PlexbotChat() {
     return () => {
       vv.removeEventListener("resize", fit);
       vv.removeEventListener("scroll", fit);
-      panel.style.top = panel.style.bottom = panel.style.height = panel.style.paddingBottom = "";
+      panel.style.top = panel.style.bottom = panel.style.height = "";
       html.style.overflow = overflow;
     };
   }, [open]);
