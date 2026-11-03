@@ -117,6 +117,19 @@ def test_llm_rerank_is_used_when_sane_and_ignored_when_not(people, monkeypatch):
     assert recs.rerank([], shortlist) is None
 
 
+def test_a_kind_missing_from_the_top_picks_is_topped_up_below_them(people, monkeypatch):
+    monkeypatch.setattr(llm, "available", lambda: False)
+    monkeypatch.setattr(recs, "KEEP", 2)
+    monkeypatch.setattr(recs, "SHORTLIST", 2)
+    monkeypatch.setattr(recs, "PER_KIND", 1)
+    tmdb = FakeTMDB({("tv", 1): [rec(60, "Top One"), rec(61, "Top Two"), rec(62, "Third TV"),
+                                 rec(63, "Bebop", genre_ids=[16], original_language="ja")]})
+    assert recs.build_for(people, tmdb, A, {}) == 2
+    assert [p["title"] for p in recs.for_user(people, A)][:2] == ["Top One", "Top Two"]  # untouched
+    assert [p["title"] for p in recs.for_user(people, A, media="anime")] == ["Bebop"]
+    assert recs.for_user(people, A, media="tv")[0]["title"] == "Top One"   # TV already had its share
+
+
 def test_build_all_keeps_people_separate(people, monkeypatch):
     monkeypatch.setattr(llm, "available", lambda: False)
     tmdb = FakeTMDB({("tv", 1): [rec(40, "For A")], ("tv", 2): [rec(41, "For Both")]})

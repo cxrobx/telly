@@ -51,6 +51,11 @@ TRENDING_WEIGHT = 0.35
 ANIMATION = 16  # TMDB genre id, the same for TV and movies
 TRENDING_MIN_VOTES = 10  # this week's premieres haven't had time to collect 50
 TRENDING_KEEP = 20
+# Below their KEEP picks, each kind gets topped up to this many from the same pool, so asking
+# for anime or movies alone (plexbot, the For You filter) isn't empty when the top KEEP were TV.
+PER_KIND = 6
+KINDS = {"anime": lambda c: c.anime, "movie": lambda c: c.media_type == "movie",
+         "tv": lambda c: c.media_type == "tv"}
 HOME_PICKS = 10  # the For you rail on the home page; trending never repeats one of these
 FRESH_DAYS, STALE_DAYS = 60, 365
 # How far an old title that's trending again sinks. TV sinks less: TMDB dates a show by its
@@ -402,7 +407,7 @@ def build_for(s: Session, tmdb: TMDBClient, plex_id: int,
         (c, before.get((c.tmdb_id, c.media_type)) or template_reason(c)) for c in shortlist[:KEEP]]
     s.execute(delete(Recommendation).where(Recommendation.plex_id == plex_id))
     now = utcnow()
-    for rank, (c, reason) in enumerate(picked, 1):
+    for rank, (c, reason) in enumerate(picked + _top_up(ranked, picked, before), 1):
         s.add(Recommendation(
             plex_id=plex_id, tmdb_id=c.tmdb_id, media_type=c.media_type, rank=rank,
             score=round(c.score, 4), title=c.title, year=c.year, poster_path=c.poster_path,
@@ -413,6 +418,24 @@ def build_for(s: Session, tmdb: TMDBClient, plex_id: int,
         ranked, {(c.tmdb_id, c.media_type) for c, _ in picked[:HOME_PICKS]}), library)
     s.flush()
     return len(picked)
+
+
+def _top_up(ranked: list[Candidate], picked: list[tuple[Candidate, str]],
+            before: dict[tuple[int, str], str]) -> list[tuple[Candidate, str]]:
+    """The best-scoring candidates of each kind the picks are short of, in score order."""
+    taken = {(c.tmdb_id, c.media_type) for c, _ in picked}
+    out = []
+    for fits in KINDS.values():
+        have = sum(1 for c, _ in picked + out if fits(c))
+        for c in ranked:
+            if have >= PER_KIND:
+                break
+            key = (c.tmdb_id, c.media_type)
+            if fits(c) and key not in taken:
+                taken.add(key)
+                out.append((c, before.get(key) or template_reason(c)))
+                have += 1
+    return out
 
 
 def _store_trending(s: Session, plex_id: int, rows: list[tuple[Candidate, float, str]],

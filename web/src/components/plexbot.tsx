@@ -10,6 +10,9 @@ type Grant = { token: string; id: string; name: string; chat_url: string; expire
 
 // Re-mint on open once the token is this close to expiring (it lives an hour).
 const REFRESH_MARGIN_S = 600;
+// Less than this between the window and the visible area is browser chrome, not a keyboard.
+const KEYBOARD_MIN_PX = 120;
+const FLOAT_GAP_PX = 12;
 
 async function fetchGrant(): Promise<Grant | null> {
   // A plain fetch, not api(): this must never redirect or throw on the pages it decorates.
@@ -78,25 +81,39 @@ export function PlexbotChat() {
   // Phones: iOS doesn't shrink the page for the keyboard, it scrolls it, which pushed the
   // full-screen panel's input to the top with dead space under it. Pin the panel to the visible
   // area instead, so the input sits on the keyboard (the chat inside stays 100% of the frame).
+  // Wider touch screens (the open iPhone Duo, iPads) keep the floating panel, but the same
+  // scroll left it stranded high with a gap over the keyboard: while the keyboard is up, the
+  // panel sits just above it at its own height, shrunk only if the visible area is shorter.
   useEffect(() => {
     const vv = window.visualViewport;
     const panel = panelRef.current;
-    if (!open || !vv || !panel || !window.matchMedia("(max-width: 767px)").matches) return;
+    const phone = window.matchMedia("(max-width: 767px)").matches;
+    if (!open || !vv || !panel || !(phone || window.matchMedia("(pointer: coarse)").matches)) return;
+    const reset = () => { panel.style.top = panel.style.bottom = panel.style.height = ""; };
     const fit = () => {
-      panel.style.top = `${vv.offsetTop}px`;
+      if (phone) {
+        panel.style.top = `${vv.offsetTop}px`;
+        panel.style.bottom = "auto";
+        panel.style.height = `${vv.height}px`;
+        return;
+      }
+      reset();
+      if (window.innerHeight - vv.height < KEYBOARD_MIN_PX) return; // no keyboard: the CSS place
+      const h = Math.min(panel.offsetHeight, vv.height - 2 * FLOAT_GAP_PX);
+      panel.style.height = `${h}px`;
+      panel.style.top = `${vv.offsetTop + vv.height - h - FLOAT_GAP_PX}px`;
       panel.style.bottom = "auto";
-      panel.style.height = `${vv.height}px`;
     };
     fit();
     vv.addEventListener("resize", fit);
     vv.addEventListener("scroll", fit);
     const html = document.documentElement;
     const overflow = html.style.overflow;
-    html.style.overflow = "hidden"; // the page behind shouldn't scroll under the chat
+    if (phone) html.style.overflow = "hidden"; // the page behind shouldn't scroll under the chat
     return () => {
       vv.removeEventListener("resize", fit);
       vv.removeEventListener("scroll", fit);
-      panel.style.top = panel.style.bottom = panel.style.height = "";
+      reset();
       html.style.overflow = overflow;
     };
   }, [open]);
