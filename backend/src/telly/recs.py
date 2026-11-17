@@ -5,7 +5,8 @@
    watching), IMDb ratings of 7+, thumbs up, and (weakly) Overseerr requests and chat mentions
    (taste.py). Top 12.
 2. Candidates: TMDB recommendations for each seed (rank-discounted, weighted by the seed),
-   plus this week's trending TV and movies (a smaller boost).
+   plus this week's trending TV and movies (a smaller boost). If that pool has fewer than
+   six anime, public anime discovery supplies more, ranked locally by positive genre fit.
 3. Drop what they've watched, follow, watchlisted, requested, rated, or thumbed down; drop
    obscure titles (under 50 votes); nudge by rating. Push down (never drop) what TMDB
    recommends off something they didn't like: rated Not for me, dropped early, or 4 and under on
@@ -28,6 +29,8 @@ import threading
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+
+import httpx
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -99,6 +102,8 @@ class Candidate:
     anime: bool = False
     penalty: float = 0.0  # from what they didn't like; see NEG_FLOOR
     unlike: list[str] = field(default_factory=list)
+    discovered_anime: bool = False
+    genre_match: bool = False
 
     @property
     def damp(self) -> float:
@@ -213,7 +218,8 @@ def _excluded(s: Session, plex_id: int) -> set[tuple[int, str]]:
 
 
 def candidates(s: Session, tmdb: TMDBClient, plex_id: int, seeds: list[Seed],
-               trending: dict[str, list[dict]], negatives: list[Seed] = ()) -> list[Candidate]:
+               trending: dict[str, list[dict]], negatives: list[Seed] = (),
+               include_anime: bool = False) -> list[Candidate]:
     excluded = _excluded(s, plex_id)
     pool: dict[tuple[int, str], Candidate] = {}
     top = max((x.weight for x in seeds), default=1.0)
@@ -240,6 +246,28 @@ def candidates(s: Session, tmdb: TMDBClient, plex_id: int, seeds: list[Seed],
                 c.trending = True
                 c.trend_rank = rank
                 c.score += TRENDING_WEIGHT * top / math.sqrt(rank + 1)
+    if include_anime and sum(c.anime for c in pool.values()) < PER_KIND:
+        # A live-action-heavy top 12 must not starve Anime. Supply its own candidates,
+        # then score fit locally using genres recommended off this member's positive seeds.
+        profile = genre_profile(list(pool.values()))
+        for media_type in ("tv", "movie"):
+            for page in (1, 2):  # bounded: at most 80 public titles, four calls per batch
+                try:
+                    results = tmdb.anime_discovery(media_type, page)
+                except httpx.HTTPError:
+                    log.warning("anime discovery unavailable for %s page %s", media_type, page)
+                    break  # keep the other kind and the normal recommendations
+                for rank, r in enumerate(results):
+                    if not is_anime(r) or (r.get("id"), media_type) in pool:
+                        continue
+                    c = consider(r, media_type)
+                    if c is not None:
+                        genres = [g for g in c.genre_ids if g != ANIMATION]
+                        affinity = sum(profile.get(g, 0) for g in genres) / len(genres) if genres else 0
+                        c.discovered_anime = True
+                        c.genre_match = affinity > 0
+                        c.score = TRENDING_WEIGHT * top * (0.5 + affinity) / math.sqrt(
+                            (page - 1) * 20 + rank + 1)
     for neg in negatives:
         for rank, r in enumerate(tmdb.recommendations(neg.media_type, neg.tmdb_id)[:PER_SEED]):
             c = pool.get((r.get("id"), neg.media_type))
@@ -261,6 +289,8 @@ def template_reason(c: Candidate) -> str:
         return f"Because you like {names[0]} and {names[1]}."
     if names:
         return f"Because you like {names[0]}." + (" Trending this week too." if c.trending else "")
+    if c.discovered_anime:
+        return "Anime with genres that fit your taste." if c.genre_match else "Popular anime to explore."
     return "Trending this week."
 
 
@@ -445,7 +475,7 @@ def build_for(s: Session, tmdb: TMDBClient, plex_id: int,
               trending: dict[str, list[dict]]) -> int:
     seeds = seeds_for(s, plex_id)
     negatives = negatives_for(s, plex_id)
-    ranked = candidates(s, tmdb, plex_id, seeds, trending, negatives)
+    ranked = candidates(s, tmdb, plex_id, seeds, trending, negatives, include_anime=bool(seeds))
     library = set(s.execute(select(LibraryItem.tmdb_id, LibraryItem.media_type)).all())
     if not seeds:
         # Nothing to go on yet (a new member): no picks, and any they had stay, but Trending

@@ -302,6 +302,9 @@ NEWBIE = 444
 
 
 class FirstPicksTMDB:
+    def anime_discovery(self, media_type, page=1):
+        return []
+
     def recommendations(self, media_type, tmdb_id):
         assert (media_type, tmdb_id) == ("tv", 1438)
         return [{"id": 1100, "name": "Like The Wire", "vote_count": 900, "vote_average": 8.0}]

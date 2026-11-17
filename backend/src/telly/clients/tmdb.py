@@ -11,6 +11,7 @@ BASE_URL = "https://api.themoviedb.org/3"
 
 class TMDBClient:
     def __init__(self, token: str | None = None, client: httpx.Client | None = None) -> None:
+        self._anime_pages: dict[tuple[str, int], list[dict]] = {}
         self.http = client or httpx.Client(
             base_url=BASE_URL, timeout=15.0,
             headers={"Authorization": f"Bearer {token or get_settings().tmdb_token}",
@@ -41,6 +42,16 @@ class TMDBClient:
 
     def trending(self, media_type: str, window: str = "week") -> list[dict]:
         return (self._get(f"/trending/{media_type}/{window}") or {}).get("results", [])
+
+    def anime_discovery(self, media_type: str, page: int = 1) -> list[dict]:
+        """Public anime discovery, shared across members in one build. No watch history sent."""
+        key = (media_type, page)
+        if key not in self._anime_pages:
+            self._anime_pages[key] = (self._get(
+                f"/discover/{media_type}", with_genres=16, with_original_language="ja",
+                include_adult="false", sort_by="popularity.desc", page=page,
+                **{"vote_count.gte": 50}) or {}).get("results", [])
+        return self._anime_pages[key]
 
     def find_imdb(self, imdb_id: str) -> dict | None:
         return self._get(f"/find/{imdb_id}", external_source="imdb_id")

@@ -23,14 +23,20 @@ def rec(id_, title, votes=500, rating=7.5, **kw):
 
 
 class FakeTMDB:
-    def __init__(self, by_seed, trending=None):
+    def __init__(self, by_seed, trending=None, anime=None):
         self.by_seed, self._trending = by_seed, trending or {}
+        self.anime = anime or {}
+        self.discovery_calls = []
 
     def recommendations(self, media_type, tmdb_id):
         return self.by_seed.get((media_type, tmdb_id), [])
 
     def trending(self, media_type, window="week"):
         return self._trending.get(media_type, [])
+
+    def anime_discovery(self, media_type, page=1):
+        self.discovery_calls.append((media_type, page))
+        return self.anime.get((media_type, page), [])
 
 
 @pytest.fixture
@@ -505,3 +511,64 @@ def test_recent_job_syncs_before_building_and_skips_removed_members(people, monk
     jobs.run_recent()
     assert [p["tmdb_id"] for p in recs.recent_for_user(people, A)] == [95]
     assert people.get(RecentPicks, B) is None
+
+
+def test_anime_has_its_own_supply_when_broad_pool_is_live_action(people, monkeypatch):
+    monkeypatch.setattr(llm, "available", lambda: False)
+    anime = lambda i, **kw: rec(i, f"Anime {i}", genre_ids=[16, 18], original_language="ja", **kw)
+    people.add_all([Follow(plex_id=A, tmdb_id=70, source="manual"),
+                    WatchlistItem(plex_id=A, tmdb_id=71, media_type="tv", title="Saved"),
+                    Feedback(plex_id=A, tmdb_id=72, media_type="tv", value=-1)])
+    people.flush()
+    tmdb = FakeTMDB({("tv", 1): [rec(40, "Drama", genre_ids=[18])]}, anime={
+        ("tv", 1): [anime(1), anime(70), anime(71), anime(72), anime(73, adult=True), anime(74, votes=2)],
+        ("tv", 2): [anime(i) for i in range(80, 86)],
+        ("movie", 1): [anime(90)]})
+    recs.build_for(people, tmdb, A, {})
+    picks = recs.for_user(people, A, media="anime")
+    assert len(picks) >= recs.PER_KIND
+    assert all(p["tmdb_id"] in {*range(80, 86), 90} for p in picks)
+    assert all(not p["trending"] and not p["because"] for p in picks)
+    assert all(p["reason"] == "Anime with genres that fit your taste." for p in picks)
+    assert len(tmdb.discovery_calls) == 4
+    assert recs.for_user(people, B, media="anime") == []
+
+
+def test_anime_discovery_ranking_applies_taste_and_dislike_penalties(people):
+    anime = lambda i, genres: rec(i, f"Anime {i}", genre_ids=[16, *genres], original_language="ja")
+    tmdb = FakeTMDB({("tv", 1): [rec(40, "Drama", genre_ids=[18])],
+                     ("tv", 99): [anime(80, [18])]}, anime={
+        ("tv", 1): [anime(81, [35]), anime(80, [18]), anime(82, [18])]})
+    seeds = [recs.Seed(1, "tv", "Recent Show", 1)]
+    pool = recs.candidates(people, tmdb, A, seeds, {}, include_anime=True)
+    assert next(c.score for c in pool if c.tmdb_id == 80) > next(c.score for c in pool if c.tmdb_id == 81)
+    penalized = recs.candidates(people, tmdb, A, seeds, {},
+        [recs.Seed(99, "tv", "Disliked", .8)], include_anime=True)
+    assert next(c for c in penalized if c.tmdb_id == 80).damp == recs.NEG_FLOOR
+    assert next(c.score for c in penalized if c.tmdb_id == 82) > next(c.score for c in penalized if c.tmdb_id == 80)
+
+
+def test_anime_discovery_failure_keeps_the_normal_picks(people, monkeypatch):
+    monkeypatch.setattr(llm, "available", lambda: False)
+    tmdb = FakeTMDB({("tv", 1): [rec(40, "Normal pick")]})
+    def unavailable(*args):
+        raise httpx.ConnectError("unavailable")
+    tmdb.anime_discovery = unavailable
+    recs.build_for(people, tmdb, A, {})
+    assert [p["title"] for p in recs.for_user(people, A)] == ["Normal pick"]
+
+
+def test_anime_discovery_requests_are_public_filtered_and_cached():
+    from telly.clients.tmdb import TMDBClient
+    calls = []
+    def respond(request):
+        calls.append(request)
+        assert request.url.path == "/3/discover/tv"
+        assert dict(request.url.params) == {"with_genres": "16", "with_original_language": "ja",
+            "include_adult": "false", "sort_by": "popularity.desc", "page": "2", "vote_count.gte": "50"}
+        return httpx.Response(200, json={"results": [{"id": 80}]})
+    client = TMDBClient(token="test-token", client=httpx.Client(
+        base_url="https://api.themoviedb.org/3", transport=httpx.MockTransport(respond)))
+    assert client.anime_discovery("tv", 2) == [{"id": 80}]
+    assert client.anime_discovery("tv", 2) == [{"id": 80}]
+    assert len(calls) == 1

@@ -80,3 +80,18 @@ this feature never marks anything watched on Plex. The broader For you profile s
 IMDb and RT scores are hyperlinks. Show details also have links when ratings are missing.
 IMDb uses HTTPS title links for OS app handoff with a web fallback. RT uses the canonical path
 from MDBList when available after a ratings refresh, otherwise a title search; no guessed slugs.
+
+## Anime candidate supply (2026-11-16)
+
+Anime's six-pick top-up now has an independent source when the ordinary pool is short:
+TMDB Discover's first two popularity pages of Japanese-language animation, for TV and movies.
+These are public queries with no member history; the four responses are cached across members
+within the nightly batch. Existing seen/followed/watchlisted/rated/requested/disliked exclusions,
+adult filtering, the 50-vote minimum, and dislike penalties apply to the new candidates too.
+
+Discovery scores combine popularity rank, TMDB quality, and positive genre affinity from the
+member's recommendation pool (excluding the generic Animation genre). The existing model rerank
+and per-kind top-up then pick from that expanded pool. Discovery-only cards use honest anime
+reasons instead of claiming they are trending or naming a watch that didn't generate them.
+An unavailable discovery endpoint leaves the ordinary recommendations intact. No taste still
+means no personalized picks, and recent-watch recommendations keep their separate scope.

@@ -381,6 +381,9 @@ def test_telling_plexbot_a_first_like_builds_first_picks_now(client, monkeypatch
         def trending(self, media_type, window="week"):
             return []
 
+        def anime_discovery(self, media_type, page=1):
+            return []
+
     monkeypatch.setattr(mcp_server, "TMDBClient", TMDB)
     monkeypatch.setattr(recs, "TMDBClient", TMDB)
     monkeypatch.setattr(llm, "available", lambda: False)
