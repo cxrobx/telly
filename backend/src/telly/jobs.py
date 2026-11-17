@@ -17,7 +17,7 @@ from .clients.overseerr import OverseerrClient
 from .clients.plextv import PlexTV
 from .plexdata import PlexDataReport, sync_library, sync_overseerr_ids, sync_watchlists
 from .poll import PollReport, poll
-from . import memory, ratings, recs, renewals, taste
+from . import anime, memory, ratings, recs, renewals, taste
 from .sync import SyncReport, infer_follows, sync_history, sync_users
 
 log = logging.getLogger(__name__)
@@ -91,6 +91,13 @@ def run_renewals() -> renewals.RenewalReport:
     return report
 
 
+def run_anime_catalog() -> int:
+    with session_scope() as s:
+        count = anime.refresh(s, TMDBClient())
+    log.info("anime catalog: %d titles", count)
+    return count
+
+
 def run_ratings(force: bool = False) -> ratings.RatingsReport:
     if not get_settings().omdb_api_key:
         log.info("ratings skipped: no OMDb key")
@@ -114,6 +121,10 @@ def run_all() -> tuple:
     """Nightly: history (new shows become titles) and watchlists (new follows) first, then
     poll, then infer follows (needs each show's aired-episode count from the poll), then
     alerts, then recommendations (needs the library and watchlists)."""
+    try:
+        run_anime_catalog()
+    except Exception:
+        log.warning("Anime catalog refresh failed; keeping its previous snapshot")
     return (run_sync(), run_plexdata(), run_poll(), run_infer(), run_deliver(), run_recs(),
             run_ratings(), run_memory_purge())
 

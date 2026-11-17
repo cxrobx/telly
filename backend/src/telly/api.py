@@ -18,7 +18,7 @@ from itsdangerous import BadSignature, URLSafeTimedSerializer
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
-from . import history, memory, plexbot, recs, shows, taste
+from . import anime, history, memory, plexbot, recs, shows, taste
 from .clients.overseerr import OverseerrClient
 from .clients.plextv import PlexTV
 from .clients.tmdb import TMDBClient
@@ -199,6 +199,12 @@ def following(pid: int = Me) -> dict:
 def recommendations(media: Literal["any", "tv", "movie", "anime"] = "any", pid: int = Me) -> dict:
     with session_scope() as s:
         return {"picks": recs.for_user(s, pid, media=media, limit=40)}
+
+
+@router.get("/anime/catalog")
+def anime_catalog(pid: int = Me) -> dict:
+    with session_scope() as s:
+        return anime.for_user(s, pid)
 
 
 class FeedbackIn(BaseModel):

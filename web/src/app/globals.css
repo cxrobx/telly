@@ -652,3 +652,17 @@ a.score:hover { color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Acclaimed anime browsing controls. */
+.catalog-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.catalog-search { flex: 1 1 220px; min-width: 0; }
+.catalog-unwatched { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.catalog-links { display: flex; flex-wrap: wrap; gap: 12px; color: var(--accent); }
+.catalog-links a:hover { text-decoration: underline; }
+.catalog-toolbar { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(170px, 200px) minmax(170px, 200px) auto; }
+.catalog-search { border: 1px solid var(--glass-edge); background: var(--glass-2); }
+.catalog-toolbar .status-select { width: 100%; }
+@media (max-width: 900px) {
+  .catalog-toolbar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .catalog-search, .catalog-unwatched { grid-column: 1 / -1; }
+}

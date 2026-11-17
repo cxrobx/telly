@@ -53,6 +53,11 @@ class TMDBClient:
                 **{"vote_count.gte": 50}) or {}).get("results", [])
         return self._anime_pages[key]
 
+    def acclaimed_anime(self, media_type: str, page: int = 1) -> list[dict]:
+        return (self._get(f"/discover/{media_type}", with_genres=16,
+            with_original_language="ja", include_adult="false", sort_by="vote_average.desc",
+            page=page, **{"vote_count.gte": 200, "vote_average.gte": 7.5}) or {}).get("results", [])
+
     def find_imdb(self, imdb_id: str) -> dict | None:
         return self._get(f"/find/{imdb_id}", external_source="imdb_id")
 

@@ -95,3 +95,21 @@ and per-kind top-up then pick from that expanded pool. Discovery-only cards use 
 reasons instead of claiming they are trending or naming a watch that didn't generate them.
 An unavailable discovery endpoint leaves the ordinary recommendations intact. No taste still
 means no personalized picks, and recent-watch recommendations keep their separate scope.
+
+## Acclaimed anime catalog (2026-11-16)
+
+Anime defaults to **Acclaimed catalog**, with **Your picks** beside it. The catalog is
+independent of personalized picks and includes watched titles by default, marked for the
+signed-in member. Unwatched only is optional. Search, shows/movies, score sorting and
+progressive 24-card loading operate over the full cached catalog.
+
+The shared `anime_catalog` snapshot holds up to 200 public TMDB results: five score-sorted
+pages each of Japanese-language animated shows and movies, minimum 200 votes and 7.5/10.
+Default acclaim is `(votes × rating + 500 × 7) / (votes + 500)`, shrinking small samples toward
+7. TMDB scores are labelled separately from IMDb and RT. Missing scores retain IMDb/RT links.
+
+Refresh runs daily before the nightly jobs and replaces the snapshot only after a complete,
+nonempty fetch. Failure retains the previous snapshot without blocking other jobs. Public
+queries send no member data. Reads require normal session auth, attach only the caller's
+Plex/manual history flags and make no external calls. Catalog titles join the existing weekly
+external-ratings refresh. Browsing never changes Plex watch state.

@@ -51,6 +51,10 @@ export type Pick = {
   trending: boolean;
   in_library: boolean;
   anime?: boolean;
+  watched?: boolean;
+  tmdb_rating?: number;
+  tmdb_votes?: number;
+  acclaim?: number;
   poster_path: string | null;
   backdrop_path: string | null;
   overview: string;

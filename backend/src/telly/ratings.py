@@ -33,7 +33,7 @@ from sqlalchemy.orm import Session
 
 from .clients.tmdb import TMDBClient
 from .config import get_settings
-from .models import Follow, Rating, Recommendation, Title, TrendingPick, RecentPicks, User, aware, utcnow
+from .models import AnimeCatalog, Follow, Rating, Recommendation, Title, TrendingPick, RecentPicks, User, aware, utcnow
 
 log = logging.getLogger(__name__)
 
@@ -180,6 +180,9 @@ def targets(s: Session) -> list[tuple[int, str]]:
     picked |= set(s.execute(select(TrendingPick.tmdb_id, TrendingPick.media_type)).all())
     for row in s.scalars(select(RecentPicks).where(RecentPicks.plex_id.in_(active))):
         picked |= {(p["tmdb_id"], p["media_type"]) for p in row.picks}
+    catalog = s.get(AnimeCatalog, 1)
+    if catalog:
+        picked |= {(p["tmdb_id"], p["media_type"]) for p in catalog.picks}
     return sorted(followed | {(int(a), b) for a, b in picked})
 
 

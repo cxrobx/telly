@@ -257,6 +257,15 @@ class RecentPicks(Base):
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class AnimeCatalog(Base):
+    """One shared snapshot of public anime metadata. No member data."""
+
+    __tablename__ = "anime_catalog"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    picks: Mapped[list] = mapped_column(JSON, default=list)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class Feedback(Base):
     """+1 / -1 on a title. -1 hides it for good; +1 makes it a taste seed."""
 

@@ -388,3 +388,14 @@ def test_history_is_the_callers_own_and_validated(client, monkeypatch):
     assert len(client.get("/api/history").json()["items"]) == 1  # Bob's remove touched only Bob
     assert client.post("/api/history/remove", json={"tmdb_id": 77, "media_type": "tv"}).json()["ok"] is True
     assert client.get("/api/history").json()["items"] == []
+
+
+def test_anime_catalog_is_authenticated_and_watch_flags_are_per_member(client):
+    from telly.models import AnimeCatalog, Play
+    with db.session_scope() as s:
+        s.add(AnimeCatalog(id=1, picks=[{"tmdb_id": 1, "media_type": "tv", "title": "Example Anime"}]))
+        s.add(Play(history_key="catalog-play", plex_id=ALICE, media_type="tv", tmdb_id=1,
+                   rating_key="example", viewed_at=utcnow()))
+    assert client.get("/api/anime/catalog").status_code == 401
+    assert as_user(client, ALICE).get("/api/anime/catalog").json()["picks"][0]["watched"] is True
+    assert as_user(client, BOB).get("/api/anime/catalog").json()["picks"][0]["watched"] is False

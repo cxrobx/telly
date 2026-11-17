@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { ArrowDownWideNarrow } from "lucide-react";
+import { AnimeCatalog } from "@/components/anime-catalog";
 import { useBackdrop } from "@/components/backdrop";
 import { Empty, PickCard, Skeleton } from "@/components/ui";
 import { backdrop, useApi, type Me, type Pick } from "@/lib/api";
@@ -60,6 +61,8 @@ function subscribeSort(cb: () => void) {
 
 export default function ForYouPage() {
   const [media, setMedia] = useState<(typeof FILTERS)[number]["key"]>("any");
+  const [animeView, setAnimeView] = useState<"catalog" | "picks">("catalog");
+  const catalog = media === "anime" && animeView === "catalog";
   const sort = useSyncExternalStore(subscribeSort, readSort, () => "match" as SortKey);
   const { data, loading, setData } = useApi<{ picks: Pick[] }>(`/recs?media=${media}`);
   const { data: me } = useApi<Me>("/me");
@@ -96,7 +99,7 @@ export default function ForYouPage() {
               </button>
             ))}
           </div>
-          <div className="sort" role="radiogroup" aria-label="Sort by">
+          {!catalog && <div className="sort" role="radiogroup" aria-label="Sort by">
             <ArrowDownWideNarrow size={16} aria-hidden className="sort-icon" />
             {SORTS.map((s) => (
               <button
@@ -109,10 +112,14 @@ export default function ForYouPage() {
                 {s.label}
               </button>
             ))}
-          </div>
+          </div>}
         </div>
+        {media === "anime" && <div className="pills" role="tablist" aria-label="Anime view">
+          <button className="pill" role="tab" aria-selected={animeView === "catalog"} onClick={() => setAnimeView("catalog")}>Acclaimed catalog</button>
+          <button className="pill" role="tab" aria-selected={animeView === "picks"} onClick={() => setAnimeView("picks")}>Your picks</button>
+        </div>}
       </header>
-      {loading || !data ? (
+      {catalog ? <AnimeCatalog canRequest={me?.can_request} /> : loading || !data ? (
         <Skeleton rows={3} />
       ) : picks.length === 0 ? (
         <Empty>
