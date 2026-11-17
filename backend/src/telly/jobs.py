@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import logging
 
+from sqlalchemy import select
+from .models import User
+
 from .alerts import DeliveryReport, deliver
 from .clients.notify import DiscordDM, Ntfy
 from .clients.plex import PlexClient
@@ -118,3 +121,16 @@ def run_all() -> tuple:
 def run_hot() -> tuple[PollReport, DeliveryReport]:
     """Hourly: shows airing around now, then alerts, so a new episode lands within the hour."""
     return run_poll(hot_only=True), run_deliver()
+
+
+def run_recent() -> None:
+    """Hourly Plex history sync, then recent-watch picks. No model calls or notifications."""
+    run_sync()
+    with session_scope() as s:
+        ids = list(s.scalars(select(User.plex_id).where(User.removed_at.is_(None))))
+    for pid in ids:
+        try:
+            with session_scope() as s:
+                recs.build_recent_for(s, TMDBClient(), pid)
+        except Exception as e:  # one member or upstream failure keeps the previous picks
+            log.warning("recent picks failed for %s: %s", pid, e)

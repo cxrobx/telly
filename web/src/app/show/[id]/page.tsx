@@ -43,7 +43,7 @@ export default function ShowPage() {
               </Chip>
             )}
           </div>
-          <Scores ratings={data.ratings} />
+          <Scores title={data.name} ratings={data.ratings} />
           {data.genres.length > 0 && <div className="muted small">{data.genres.join(" · ")}</div>}
           <div className="show-facts">
             {data.next_episode ? (
@@ -99,6 +99,18 @@ export default function ShowPage() {
                 </>
               )}
             </button>
+            <a
+              className="btn"
+              href={data.imdb_id
+                ? `https://www.imdb.com/title/${data.imdb_id}/`
+                : `https://www.imdb.com/find/?q=${encodeURIComponent([data.name, data.year].filter(Boolean).join(" "))}&s=tt`}
+              rel="noreferrer"
+            >
+              {data.imdb_id ? "View on IMDb" : "Find on IMDb"} <ExternalLink size={16} />
+            </a>
+            <a className="btn" href={data.ratings?.rt_url ?? `https://www.rottentomatoes.com/search?search=${encodeURIComponent(data.name)}`} rel="noreferrer">
+              Rotten Tomatoes <ExternalLink size={16} />
+            </a>
           </div>
         </div>
       </section>

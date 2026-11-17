@@ -36,6 +36,7 @@ export type Ratings = {
   imdb: number | null;
   imdb_votes: number | null;
   imdb_id: string | null;
+  rt_url?: string | null;
   rt_critic: number | null;
   rt_audience: number | null;
 } | null;
@@ -75,6 +76,7 @@ export type Home = {
   airing_soon: TimelineItem[];
   whats_new: NewsEvent[];
   for_you: Pick[];
+  recent_picks: Pick[];
   trending: Pick[];
   needs_taste: boolean; // nothing to base picks on yet, and they haven't closed the prompt
   building: boolean; // their first picks are being built right now
@@ -97,6 +99,7 @@ export type Followed = Art & {
 
 export type ShowDetail = Art & {
   tmdb_id: number;
+  imdb_id: string | null;
   name: string;
   year: number | null;
   status: string | null;

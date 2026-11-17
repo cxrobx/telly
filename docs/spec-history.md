@@ -64,3 +64,19 @@ The weights and thresholds above are Telly's own starting values, not published 
 5. https://variety.com/2022/digital/news/netflix-two-thumbs-up-ratings-1235228641/
 6. Hu, Koren & Volinsky, ICDM 2008 — http://yifanhu.net/PUB/cf.pdf
 7. Cosley et al., CHI 2003 — https://experts.umn.edu/en/publications/is-seeing-believing-how-recommender-interfaces-affect-users-opini
+
+## Home: based on your recent watches (2026-11-16)
+
+A separate home rail uses the last three distinct Plex titles watched in the past 30 days,
+weighted with a 14-day half-life. It uses TMDB recommendations without a model call or trending
+seeds. Disliked/dropped titles are not seeds. Existing exclusions still apply, and the home
+response removes titles already shown in For you or Trending. Each card names its source watch.
+
+The hourly `recent` job (minute 05) pulls Plex history first and rebuilds these picks per active
+member. Failures retain the previous picks; reads filter new watches/rejections and expired
+sources immediately. No recent plays or no eligible matches means no rail. Sync is Plex → Telly;
+this feature never marks anything watched on Plex. The broader For you profile stays unchanged.
+
+IMDb and RT scores are hyperlinks. Show details also have links when ratings are missing.
+IMDb uses HTTPS title links for OS app handoff with a web fallback. RT uses the canonical path
+from MDBList when available after a ratings refresh, otherwise a title search; no guessed slugs.

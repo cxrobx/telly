@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .clients.tmdb import TMDBClient
-from .models import Event, Follow, LibraryItem, Play, Title, aware, utcnow
+from .models import Event, Follow, LibraryItem, Play, Rating, Title, aware, utcnow
 from .poll import PollReport, poll_title
 from .ratings import lookup
 
@@ -245,6 +245,8 @@ def show_detail(s: Session, plex_id: int, tmdb_id: int) -> dict | None:
         and e.payload.get("season") not in listed), None)  # a renewal TMDB hasn't added yet
     return {
         "tmdb_id": t.tmdb_id, "name": t.name, "year": t.year, "status": t.status,
+        # A title can have an IMDb page before it has any ratings.
+        "imdb_id": t.imdb_id or getattr(s.get(Rating, (tmdb_id, "tv")), "imdb_id", None),
         "genres": t.genres, "seasons": [x for x in t.seasons or [] if (x.get("season") or 0) > 0],
         "last_episode": t.last_episode, "next_episode": t.next_episode, **_art(t),
         "following": bool(f and f.state == "following"),

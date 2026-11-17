@@ -27,7 +27,8 @@ function Popcorn() {
   );
 }
 
-export function Scores({ ratings, compact = false }: { ratings?: Ratings; compact?: boolean }) {
+export function Scores({ ratings, title, compact = false }: { ratings?: Ratings; title: string; compact?: boolean }) {
+  const rtUrl = ratings?.rt_url ?? `https://www.rottentomatoes.com/search?search=${encodeURIComponent(title)}`;
   if (!ratings || (ratings.imdb == null && ratings.rt_critic == null && ratings.rt_audience == null)) return null;
   const { imdb, imdb_votes, imdb_id, rt_critic, rt_audience } = ratings;
   return (
@@ -35,8 +36,7 @@ export function Scores({ ratings, compact = false }: { ratings?: Ratings; compac
       {imdb != null && (
         <a
           className="score"
-          href={imdb_id ? `https://www.imdb.com/title/${imdb_id}/` : undefined}
-          target="_blank"
+          href={imdb_id ? `https://www.imdb.com/title/${imdb_id}/` : `https://www.imdb.com/find/?q=${encodeURIComponent(title)}&s=tt`}
           rel="noreferrer"
           title={`IMDb ${imdb}/10${imdb_votes ? ` · ${votes(imdb_votes)}` : ""}`}
           onClick={(e) => e.stopPropagation()}
@@ -47,16 +47,16 @@ export function Scores({ ratings, compact = false }: { ratings?: Ratings; compac
         </a>
       )}
       {rt_critic != null && (
-        <span className="score" title={`Rotten Tomatoes critics: ${rt_critic}%`}>
+        <a className="score" href={rtUrl} rel="noreferrer" onClick={(e) => e.stopPropagation()} title={`${title} on Rotten Tomatoes · critics: ${rt_critic}%`}>
           <Tomato fresh={rt_critic >= 60} />
           <span>{rt_critic}%</span>
-        </span>
+        </a>
       )}
       {rt_audience != null && (
-        <span className="score" title={`Rotten Tomatoes audience: ${rt_audience}%`}>
+        <a className="score" href={rtUrl} rel="noreferrer" onClick={(e) => e.stopPropagation()} title={`${title} on Rotten Tomatoes · audience: ${rt_audience}%`}>
           <Popcorn />
           <span>{rt_audience}%</span>
-        </span>
+        </a>
       )}
     </div>
   );

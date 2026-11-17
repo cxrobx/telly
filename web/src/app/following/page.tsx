@@ -116,7 +116,7 @@ function FollowCard({ show, onUnfollow }: { show: Followed; onUnfollow: () => vo
         <Link href={`/show/${show.tmdb_id}`} className="pick-title">
           {show.name} {show.year && <span className="pick-year">{show.year}</span>}
         </Link>
-        <Scores ratings={show.ratings} compact />
+        <Scores title={show.name} ratings={show.ratings} compact />
         <p className={`follow-next ${line.tone}`}>{line.text}</p>
         <div className="pick-actions">
           <span className="follow-why">{WHY[show.followed_because]}</span>

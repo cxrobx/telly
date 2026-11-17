@@ -439,3 +439,69 @@ def test_first_build_only_while_they_have_no_picks(people):
     assert not recs.needs_warm(people, new)
     assert not recs.needs_warm(people, A)
     assert not recs.needs_warm(people, B)
+
+
+def test_recent_plex_picks_are_scoped_fresh_and_respect_exclusions(people, monkeypatch):
+    from telly.models import WatchEntry
+    monkeypatch.setattr(recs, "utcnow", lambda: NOW)
+    assert [x.name for x in recs.recent_seeds_for(people, A)] == ["Recent Show", "A Movie"]
+    assert [x.name for x in recs.recent_seeds_for(people, B)] == ["Old Show"]
+    tmdb = FakeTMDB({("tv", 1): [rec(90, "New pick"), rec(1, "Already watched")],
+                     ("tv", 2): [rec(91, "Other member pick")],
+                     ("movie", 3): [rec(92, "Movie pick")]})
+    assert recs.build_recent_for(people, tmdb, A) == 2
+    assert {p["tmdb_id"] for p in recs.recent_for_user(people, A)} == {90, 92}
+    assert recs.recent_for_user(people, B) == []
+    people.add(WatchEntry(plex_id=A, tmdb_id=1, media_type="tv", title="Recent Show", rating=-1))
+    people.flush()
+    assert [p["tmdb_id"] for p in recs.recent_for_user(people, A)] == [92]
+    people.add(Feedback(plex_id=A, tmdb_id=92, media_type="movie", value=-1))
+    people.flush()
+    assert recs.recent_for_user(people, A) == []
+    monkeypatch.setattr(recs, "utcnow", lambda: NOW + timedelta(days=40))
+    assert recs.build_recent_for(people, tmdb, A) == 0
+
+
+def test_imdb_link_available_without_numeric_rating(people):
+    from telly.models import Rating
+    from telly.shows import show_detail
+    title = people.get(Title, (1, "tv"))
+    title.imdb_id = "tt1234567"
+    people.flush()
+    assert show_detail(people, A, 1)["imdb_id"] == "tt1234567"
+    title.imdb_id = None
+    people.add(Rating(tmdb_id=1, media_type="tv", imdb_id="tt7654321"))
+    people.flush()
+    assert show_detail(people, A, 1)["imdb_id"] == "tt7654321"
+
+
+def test_recent_job_syncs_before_building_and_skips_removed_members(people, monkeypatch):
+    from contextlib import contextmanager
+    from telly import jobs
+    from telly.models import RecentPicks
+    monkeypatch.setattr(recs, "utcnow", lambda: NOW)
+    people.get(User, B).removed_at = NOW
+    people.flush()
+    calls = []
+
+    @contextmanager
+    def session():
+        yield people
+
+    def sync():
+        calls.append("sync")
+        people.add(Play(history_key="new-play", plex_id=A, tmdb_id=2, media_type="tv",
+                        rating_key="x", season=1, episode=10, viewed_at=NOW))
+        people.flush()
+
+    class TMDB(FakeTMDB):
+        def recommendations(self, media_type, tmdb_id):
+            assert calls == ["sync"]
+            return super().recommendations(media_type, tmdb_id)
+
+    monkeypatch.setattr(jobs, "session_scope", session)
+    monkeypatch.setattr(jobs, "run_sync", sync)
+    monkeypatch.setattr(jobs, "TMDBClient", lambda: TMDB({("tv", 2): [rec(95, "Fresh sync pick")]}))
+    jobs.run_recent()
+    assert [p["tmdb_id"] for p in recs.recent_for_user(people, A)] == [95]
+    assert people.get(RecentPicks, B) is None

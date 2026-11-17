@@ -17,7 +17,7 @@ from .clients.plextv import PlexTV
 from .config import get_settings
 from .db import session_scope
 from .api import router as api_router
-from .jobs import run_all, run_hot, run_renewals
+from .jobs import run_recent, run_all, run_hot, run_renewals
 from .logredact import install as install_log_redaction
 from .mcp_server import mcp
 from .models import Event, Follow, Play, Title, User
@@ -53,6 +53,7 @@ def create_app() -> FastAPI:
             sched.add_job(run_hot, "cron", minute=25, id="hot", max_instances=1, coalesce=True)
             sched.add_job(run_renewals, "cron", day_of_week="sun", hour=5, minute=40, id="renewals",
                           max_instances=1, coalesce=True)
+            sched.add_job(run_recent, "cron", minute=5, id="recent", max_instances=1, coalesce=True)
             sched.start()
         try:
             async with session_manager.run():

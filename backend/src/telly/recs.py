@@ -27,7 +27,7 @@ import math
 import threading
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -37,7 +37,7 @@ from .clients.tmdb import TMDBClient
 from .ratings import lookup
 from . import taste
 from .models import (Feedback, Follow, LibraryItem, Play, Recommendation, TasteSignal, Title,
-                     TrendingPick, User, WatchEntry, WatchlistItem, aware, utcnow)
+                     TrendingPick, RecentPicks, User, WatchEntry, WatchlistItem, aware, utcnow)
 
 log = logging.getLogger(__name__)
 
@@ -382,6 +382,63 @@ def trending_reason(c: Candidate, fresh: bool, today: date) -> str:
     elif fresh:
         parts.append("just out" if c.released and c.released <= today else "coming soon")
     return " · ".join(parts)
+
+
+RECENT_DAYS = 30
+RECENT_SEEDS = 3
+
+
+def recent_seeds_for(s: Session, plex_id: int, now: datetime | None = None) -> list[Seed]:
+    """Last three distinct Plex titles within 30 days; explicit dislikes/drops win."""
+    now = now or utcnow()
+    blocked = {(w.tmdb_id, w.media_type) for w in history.watched(s, plex_id, now)
+               if w.rating == -1 or w.status == "dropped"}
+    blocked |= set(s.execute(select(Feedback.tmdb_id, Feedback.media_type).where(
+        Feedback.plex_id == plex_id, Feedback.value < 0)).all())
+    blocked |= {(n.tmdb_id, n.media_type) for n in negatives_for(s, plex_id, now)}
+    rows = s.execute(select(Play.tmdb_id, Play.media_type, Title.name, func.max(Play.viewed_at))
+        .join(Title, (Title.tmdb_id == Play.tmdb_id) & (Title.media_type == Play.media_type))
+        .where(Play.plex_id == plex_id, Play.viewed_at >= now - timedelta(days=RECENT_DAYS))
+        .group_by(Play.tmdb_id, Play.media_type, Title.name)
+        .order_by(func.max(Play.viewed_at).desc(), Play.tmdb_id, Play.media_type))
+    out = []
+    for tid, kind, name, last in rows:
+        if (tid, kind) not in blocked:
+            age = max((now - aware(last)).total_seconds() / 86400, 0)
+            out.append(Seed(tid, kind, name, 0.5 ** (age / 14)))
+        if len(out) == RECENT_SEEDS:
+            break
+    return out
+
+
+def build_recent_for(s: Session, tmdb: TMDBClient, plex_id: int) -> int:
+    seeds = recent_seeds_for(s, plex_id)
+    pool = candidates(s, tmdb, plex_id, seeds, {}, negatives_for(s, plex_id)) if seeds else []
+    library = set(s.execute(select(LibraryItem.tmdb_id, LibraryItem.media_type)).all())
+    picks = [{"tmdb_id": c.tmdb_id, "media_type": c.media_type, "title": c.title,
+              "year": c.year, "poster_path": c.poster_path, "backdrop_path": c.backdrop_path,
+              "overview": c.overview, "because": _because(c), "trending": False,
+              "anime": c.anime, "in_library": (c.tmdb_id, c.media_type) in library,
+              "reason": "Because you recently watched " + " and ".join(_because(c)) + "."}
+             for c in pool[:SHORTLIST]]
+    s.merge(RecentPicks(plex_id=plex_id, picks=picks, generated_at=utcnow()))
+    s.flush()
+    return len(picks)
+
+
+def recent_for_user(s: Session, plex_id: int, limit: int = HOME_PICKS) -> list[dict]:
+    row = s.get(RecentPicks, plex_id)
+    if row is None or not recent_seeds_for(s, plex_id):
+        return []
+    excluded = _excluded(s, plex_id)
+    # Each home rail should bring something different.
+    excluded |= {(p["tmdb_id"], p["media_type"]) for p in for_user(s, plex_id, limit=HOME_PICKS)}
+    excluded |= {(p["tmdb_id"], p["media_type"]) for p in trending_for_user(s, plex_id)}
+    sources = {seed.name for seed in recent_seeds_for(s, plex_id)}
+    picks = [p for p in row.picks if (p["tmdb_id"], p["media_type"]) not in excluded
+             and p["because"] and sources.issuperset(p["because"])][:limit]
+    scores = lookup(s, [(p["tmdb_id"], p["media_type"]) for p in picks])
+    return [{**p, "ratings": scores.get((p["tmdb_id"], p["media_type"]))} for p in picks]
 
 
 def build_for(s: Session, tmdb: TMDBClient, plex_id: int,

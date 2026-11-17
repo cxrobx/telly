@@ -164,6 +164,7 @@ def home(pid: int = Me) -> dict:
         u = s.get(User, pid)
         return {"hero": hero, "airing_soon": timeline["dated"][:10], "whats_new": news,
                 "for_you": picks, "trending": recs.trending_for_user(s, pid),
+                "recent_picks": recs.recent_for_user(s, pid),
                 # nothing to base picks on yet: the home page asks them what they like
                 "needs_taste": u.taste_prompt_dismissed_at is None and not recs.seeds_for(s, pid),
                 "building": recs.warming(pid)}

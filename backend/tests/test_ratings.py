@@ -101,9 +101,11 @@ SUCCESSION_LEGACY_HOST = {"ratings": [
 
 def test_parse_mdblist_both_hosts_audience_names():
     assert ratings.parse_mdblist(FALLOUT_NEW_HOST) == {"rt_critic": 94, "rt_audience": 96,
-                                                      "imdb": 8.3, "imdb_votes": 404242}
+                                                      "imdb": 8.3, "imdb_votes": 404242,
+                                                      "rt_url": "https://www.rottentomatoes.com/tv/fallout"}
     assert ratings.parse_mdblist(SUCCESSION_LEGACY_HOST) == {"rt_critic": 95, "rt_audience": 88,
-                                                             "imdb": None, "imdb_votes": None}
+                                                             "imdb": None, "imdb_votes": None,
+                                                             "rt_url": "https://www.rottentomatoes.com/tv/succession"}
     assert ratings.parse_mdblist({"ratings": [{"source": "tomatoes", "value": None}]}) is None
 
 

@@ -210,7 +210,7 @@ export function PickCard({
         <div className="pick-title">
           {pick.title} {pick.year && <span className="pick-year">{pick.year}</span>}
         </div>
-        <Scores ratings={pick.ratings} compact />
+        <Scores title={pick.title} ratings={pick.ratings} compact />
         <p className="pick-reason">{pick.reason}</p>
         {!compact && (
           <div className="pick-actions">

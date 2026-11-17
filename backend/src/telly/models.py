@@ -247,6 +247,16 @@ class TrendingPick(Base):
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class RecentPicks(Base):
+    """Recommendations from recent Plex plays, refreshed after history sync. Stored per member."""
+
+    __tablename__ = "recent_picks"
+
+    plex_id: Mapped[int] = mapped_column(ForeignKey("users.plex_id"), primary_key=True)
+    picks: Mapped[list] = mapped_column(JSON, default=list)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class Feedback(Base):
     """+1 / -1 on a title. -1 hides it for good; +1 makes it a taste seed."""
 
@@ -281,6 +291,7 @@ class Rating(Base):
     imdb_id: Mapped[str | None] = mapped_column(String)
     imdb: Mapped[float | None] = mapped_column()          # 0-10
     imdb_votes: Mapped[int | None] = mapped_column(Integer)
+    rt_url: Mapped[str | None] = mapped_column(String)
     rt_critic: Mapped[int | None] = mapped_column(Integer)    # Tomatometer, 0-100
     rt_audience: Mapped[int | None] = mapped_column(Integer)  # Popcornmeter, 0-100
     metacritic: Mapped[int | None] = mapped_column(Integer)

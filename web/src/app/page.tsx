@@ -162,6 +162,17 @@ export default function HomePage() {
         </Section>
       )}
 
+      {data.recent_picks?.length > 0 && (
+        <Section title="Based on your recent watches">
+          <p className="muted small">Inspired by what you watched on Plex in the last 30 days. Syncs hourly.</p>
+          <Rail label="Based on your recent watches">
+            {data.recent_picks.map((p) => (
+              <PickCard key={`${p.media_type}-${p.tmdb_id}`} pick={p} canRequest={me?.can_request} compact />
+            ))}
+          </Rail>
+        </Section>
+      )}
+
       {data.for_you.length > 0 && (
         <Section title="For you" action={<Link href="/for-you" className="section-link">See all</Link>}>
           <Rail label="For you">

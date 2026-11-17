@@ -33,7 +33,7 @@ from sqlalchemy.orm import Session
 
 from .clients.tmdb import TMDBClient
 from .config import get_settings
-from .models import Follow, Rating, Recommendation, Title, TrendingPick, User, aware, utcnow
+from .models import Follow, Rating, Recommendation, Title, TrendingPick, RecentPicks, User, aware, utcnow
 
 log = logging.getLogger(__name__)
 
@@ -137,6 +137,10 @@ def parse_mdblist(d: dict) -> dict | None:
             continue
         if r.get("source") == "tomatoes":
             out["rt_critic"] = int(round(float(value)))
+            # MDBList supplies the canonical RT path; never guess a slug from the title.
+            url = r.get("url")
+            if isinstance(url, str) and re.fullmatch(r"/(?:tv|m)/[a-zA-Z0-9_/-]+", url):
+                out["rt_url"] = "https://www.rottentomatoes.com" + url
         elif r.get("source") in AUDIENCE_SOURCES:
             out["rt_audience"] = int(round(float(value)))
         elif r.get("source") == "imdb":
@@ -174,6 +178,8 @@ def targets(s: Session) -> list[tuple[int, str]]:
         Follow.state == "following", Follow.plex_id.in_(active)))}
     picked = set(s.execute(select(Recommendation.tmdb_id, Recommendation.media_type)).all())
     picked |= set(s.execute(select(TrendingPick.tmdb_id, TrendingPick.media_type)).all())
+    for row in s.scalars(select(RecentPicks).where(RecentPicks.plex_id.in_(active))):
+        picked |= {(p["tmdb_id"], p["media_type"]) for p in row.picks}
     return sorted(followed | {(int(a), b) for a, b in picked})
 
 
@@ -214,6 +220,7 @@ def refresh(s: Session, tmdb: TMDBClient, omdb: OMDb, rt_source=None, force: boo
                 if got:
                     row.rt_critic = got["rt_critic"] if got["rt_critic"] is not None else row.rt_critic
                     row.rt_audience = got["rt_audience"]
+                    row.rt_url = got.get("rt_url") or row.rt_url
                     if row.imdb is None and got["imdb"] is not None:  # OMDb lags on new titles
                         row.imdb, row.imdb_votes = got["imdb"], got["imdb_votes"]
             row.fetched_at = now  # a miss is also remembered for a week, so it isn't re-asked nightly
@@ -243,5 +250,5 @@ def lookup(s: Session, keys: list[tuple[int, str]]) -> dict[tuple[int, str], dic
         if (r.tmdb_id, r.media_type) in keys and (r.imdb or r.rt_critic or r.rt_audience):
             out[(r.tmdb_id, r.media_type)] = {"imdb": r.imdb, "imdb_votes": r.imdb_votes,
                                               "rt_critic": r.rt_critic, "rt_audience": r.rt_audience,
-                                              "imdb_id": r.imdb_id}
+                                              "imdb_id": r.imdb_id, "rt_url": r.rt_url}
     return out
