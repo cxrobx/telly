@@ -653,16 +653,18 @@ a.score:hover { color: var(--accent); }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
-/* Acclaimed anime browsing controls. */
-.catalog-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.catalog-search { flex: 1 1 220px; min-width: 0; }
-.catalog-unwatched { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
-.catalog-links { display: flex; flex-wrap: wrap; gap: 12px; color: var(--accent); }
-.catalog-links a:hover { text-decoration: underline; }
-.catalog-toolbar { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(170px, 200px) minmax(170px, 200px) auto; }
-.catalog-search { border: 1px solid var(--glass-edge); background: var(--glass-2); }
-.catalog-toolbar .status-select { width: 100%; }
-@media (max-width: 900px) {
-  .catalog-toolbar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .catalog-search, .catalog-unwatched { grid-column: 1 / -1; }
+/* Acclaimed anime browsing controls: the For You toolbar's pills and segmented bar, plus a search field. */
+.catalog-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; }
+.catalog-search { flex: 1 1 220px; max-width: 340px; padding: 8px 14px; gap: 8px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--hair); font-size: 14px; }
+.catalog-count { margin: 0; color: var(--ink-3); font-size: 13px; }
+.sort-opt[aria-pressed="true"] { color: var(--ink); background: rgba(255, 255, 255, 0.1); box-shadow: inset 0 1px 0 var(--glass-hi); }
+@media (max-width: 560px) { .catalog-search { max-width: none; flex-basis: 100%; } }
+.toolbar-end { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sort-toggle { display: inline-flex; align-items: center; gap: 6px; }
+@media (max-width: 560px) { .toolbar-end { width: 100%; } .toolbar-end .sort:last-child { width: auto; } }
+.catalog { margin-top: 18px; }
+@media (max-width: 560px) {
+  .catalog-bar { gap: 8px; }
+  .catalog-bar .sort { width: auto; }
+  .catalog-count { width: 100%; }
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState, useSyncExternalStore } from "react";
-import { ArrowDownWideNarrow } from "lucide-react";
+import { ArrowDownWideNarrow, Text } from "lucide-react";
 import { AnimeCatalog } from "@/components/anime-catalog";
 import { useBackdrop } from "@/components/backdrop";
 import { Empty, PickCard, Skeleton } from "@/components/ui";
@@ -59,11 +59,36 @@ function subscribeSort(cb: () => void) {
   return () => sortListeners.delete(cb);
 }
 
+// Summaries (the text under each card's scores) start hidden; the choice is remembered the same way.
+const SUMMARY_STORE = "telly.forYou.summaries";
+let memorySummaries: boolean | null = null;
+
+function readSummaries(): boolean {
+  try {
+    const v = localStorage.getItem(SUMMARY_STORE);
+    if (v === "1" || v === "0") return v === "1";
+  } catch {
+    /* storage blocked */
+  }
+  return memorySummaries ?? false;
+}
+
+function writeSummaries(on: boolean) {
+  memorySummaries = on;
+  try {
+    localStorage.setItem(SUMMARY_STORE, on ? "1" : "0");
+  } catch {
+    /* private window: remembered for this visit only */
+  }
+  sortListeners.forEach((l) => l());
+}
+
 export default function ForYouPage() {
   const [media, setMedia] = useState<(typeof FILTERS)[number]["key"]>("any");
   const [animeView, setAnimeView] = useState<"catalog" | "picks">("catalog");
   const catalog = media === "anime" && animeView === "catalog";
   const sort = useSyncExternalStore(subscribeSort, readSort, () => "match" as SortKey);
+  const summaries = useSyncExternalStore(subscribeSort, readSummaries, () => false);
   const { data, loading, setData } = useApi<{ picks: Pick[] }>(`/recs?media=${media}`);
   const { data: me } = useApi<Me>("/me");
 
@@ -87,10 +112,10 @@ export default function ForYouPage() {
     <div className="page">
       <header className="page-head">
         <h1 className="page-title">For you</h1>
-        <p className="page-sub">
+        {catalog ? <p className="page-sub">The best-rated anime shows and films, refreshed daily. Watched ones are marked.</p> : <p className="page-sub">
           Picked from what you&apos;ve watched on Plex, how you rated it on <Link href="/history" className="inline-link">History</Link> and your IMDb ratings, plus what&apos;s trending this week.
           Thumbs up for more like it, thumbs down and it&apos;s gone. <Link href="/taste" className="inline-link">Tune your taste</Link>
-        </p>
+        </p>}
         <div className="toolbar">
           <div className="pills" role="tablist" aria-label="Filter">
             {FILTERS.map((f) => (
@@ -99,27 +124,34 @@ export default function ForYouPage() {
               </button>
             ))}
           </div>
-          {!catalog && <div className="sort" role="radiogroup" aria-label="Sort by">
-            <ArrowDownWideNarrow size={16} aria-hidden className="sort-icon" />
-            {SORTS.map((s) => (
-              <button
-                key={s.key}
-                role="radio"
-                aria-checked={sort === s.key}
-                className="sort-opt"
-                onClick={() => writeSort(s.key)}
-              >
-                {s.label}
+          <div className="toolbar-end">
+            <div className="sort" role="radiogroup" aria-label="Sort by">
+              <ArrowDownWideNarrow size={16} aria-hidden className="sort-icon" />
+              {SORTS.map((s) => (
+                <button
+                  key={s.key}
+                  role="radio"
+                  aria-checked={sort === s.key}
+                  className="sort-opt"
+                  onClick={() => writeSort(s.key)}
+                >
+                  {s.key === "match" && catalog ? "Most acclaimed" : s.label}
+                </button>
+              ))}
+            </div>
+            <div className="sort">
+              <button className="sort-opt sort-toggle" aria-pressed={summaries} onClick={() => writeSummaries(!summaries)}>
+                <Text size={14} aria-hidden /> Summaries
               </button>
-            ))}
-          </div>}
+            </div>
+          </div>
         </div>
         {media === "anime" && <div className="pills" role="tablist" aria-label="Anime view">
           <button className="pill" role="tab" aria-selected={animeView === "catalog"} onClick={() => setAnimeView("catalog")}>Acclaimed catalog</button>
           <button className="pill" role="tab" aria-selected={animeView === "picks"} onClick={() => setAnimeView("picks")}>Your picks</button>
         </div>}
       </header>
-      {catalog ? <AnimeCatalog canRequest={me?.can_request} /> : loading || !data ? (
+      {catalog ? <AnimeCatalog canRequest={me?.can_request} sort={sort} summaries={summaries} /> : loading || !data ? (
         <Skeleton rows={3} />
       ) : picks.length === 0 ? (
         <Empty>
@@ -133,6 +165,7 @@ export default function ForYouPage() {
               key={`${p.media_type}-${p.tmdb_id}`}
               pick={p}
               canRequest={me?.can_request}
+              showReason={summaries}
               onRated={(v) => v === -1 && drop(p)}
             />
           ))}

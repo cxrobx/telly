@@ -156,12 +156,14 @@ export function PickCard({
   compact = false,
   trendingBadge = true,
   catalogMode = false,
+  showReason = true,
 }: {
   pick: Pick;
   canRequest?: boolean;
   onRated?: (value: -1 | 1) => void;
   compact?: boolean;
   catalogMode?: boolean;
+  showReason?: boolean; // For You's Summaries toggle; off hides the text under the scores
   trendingBadge?: boolean; // off in the Trending rail, where every card would carry it
 }) {
   const [rated, setRated] = useState<0 | 1 | -1>(0);
@@ -213,15 +215,8 @@ export function PickCard({
         <div className="pick-title">
           {pick.title} {pick.year && <span className="pick-year">{pick.year}</span>}
         </div>
-        {catalogMode && <a className="score small" href={`https://www.themoviedb.org/${pick.media_type}/${pick.tmdb_id}`} target="_blank" rel="noreferrer">
-          TMDB {pick.tmdb_rating?.toFixed(1)}/10 · {pick.tmdb_votes?.toLocaleString()} ratings
-        </a>}
         <Scores title={pick.title} ratings={pick.ratings} compact />
-        {catalogMode && <div className="catalog-links small">
-          <a href={pick.ratings?.imdb_id ? `https://www.imdb.com/title/${pick.ratings.imdb_id}/` : `https://www.imdb.com/find/?q=${encodeURIComponent(pick.title)}&s=tt`}>IMDb ↗</a>
-          <a href={pick.ratings?.rt_url ?? `https://www.rottentomatoes.com/search?search=${encodeURIComponent(pick.title)}`}>Rotten Tomatoes ↗</a>
-        </div>}
-        <p className="pick-reason">{pick.reason}</p>
+        {showReason && pick.reason && <p className="pick-reason">{pick.reason}</p>}
         {!compact && (
           <div className="pick-actions">
             {!catalogMode && <>
