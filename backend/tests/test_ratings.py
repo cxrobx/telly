@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from sqlalchemy import select
+
 from telly import ratings
 from telly.models import Follow, Rating, Recommendation, Title, User, utcnow
 from telly.recs import for_user
@@ -213,3 +215,18 @@ def test_spans():
     assert ratings._spans("2022–", 2026) and ratings._spans("2004–2005", 2005)
     assert not ratings._spans("2004–2005", 2026) and not ratings._spans("2027–", 2026)
     assert ratings._spans("2026", 2026) and not ratings._spans("2020", 2026)
+
+
+def test_known_scores_persist_when_a_later_refresh_comes_back_empty(s):
+    _world(s)  # e.g. OMDb's daily quota spent, MDBList down: the card keeps its badges
+    tmdb = FakeTMDB({("movie", 2): "tt0000002"})
+    ratings.refresh(s, tmdb, FakeOMDb({"tt7660850": SUCCESSION, "tt0000002": A_MOVIE}),
+                    rt_source=lambda mt, tid: _mdb(95, 88))
+    for row in s.scalars(select(Rating)):
+        row.fetched_at = utcnow() - timedelta(days=8)
+    s.commit()
+    assert ratings.refresh(s, tmdb, FakeOMDb({}), rt_source=lambda mt, tid: None).refreshed == 2
+    show, movie = s.get(Rating, (1, "tv")), s.get(Rating, (2, "movie"))
+    assert (show.imdb, show.rt_critic, show.rt_audience) == (8.8, 95, 88)
+    assert (movie.imdb, movie.rt_critic, movie.rt_audience) == (7.4, 95, 88)
+    assert movie.imdb_id == "tt0000002"

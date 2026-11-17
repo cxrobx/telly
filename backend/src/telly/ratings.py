@@ -186,6 +186,10 @@ def targets(s: Session) -> list[tuple[int, str]]:
     return sorted(followed | {(int(a), b) for a, b in picked})
 
 
+def _keep(old, new):
+    return new if new is not None else old
+
+
 def refresh(s: Session, tmdb: TMDBClient, omdb: OMDb, rt_source=None, force: bool = False) -> RatingsReport:
     """rt_source(media_type, tmdb_id) -> parse_mdblist dict | None; MDBList.scores when a key exists."""
     report = RatingsReport()
@@ -208,12 +212,15 @@ def refresh(s: Session, tmdb: TMDBClient, omdb: OMDb, rt_source=None, force: boo
                 parent = season_show(omdb, *_name_and_premiere(s, tmdb, tmdb_id, title))
                 if parent:
                     imdb_id, season_score = parent
-            row.imdb_id = imdb_id
+            row.imdb_id = imdb_id or row.imdb_id
+            # A score, once known, persists: a refresh that comes back empty (a source's daily
+            # quota, an outage, a gap on their side) keeps the last value instead of blanking it.
             if imdb_id:
                 got = omdb.get(imdb_id) or {}
-                row.imdb, row.imdb_votes = got.get("imdb"), got.get("imdb_votes")
-                row.metacritic = got.get("metacritic")
-                row.rt_critic = got.get("rt_critic")  # movies; OMDb has none for series
+                if got.get("imdb") is not None:
+                    row.imdb, row.imdb_votes = got["imdb"], got.get("imdb_votes")
+                row.metacritic = _keep(row.metacritic, got.get("metacritic"))
+                row.rt_critic = _keep(row.rt_critic, got.get("rt_critic"))  # movies; OMDb has none for series
                 if season_score is not None:
                     row.imdb, row.imdb_votes = season_score, None  # the votes were the series'
             else:
@@ -221,8 +228,8 @@ def refresh(s: Session, tmdb: TMDBClient, omdb: OMDb, rt_source=None, force: boo
             if rt_source is not None:
                 got = rt_source(media_type, tmdb_id)
                 if got:
-                    row.rt_critic = got["rt_critic"] if got["rt_critic"] is not None else row.rt_critic
-                    row.rt_audience = got["rt_audience"]
+                    row.rt_critic = _keep(row.rt_critic, got["rt_critic"])
+                    row.rt_audience = _keep(row.rt_audience, got["rt_audience"])
                     row.rt_url = got.get("rt_url") or row.rt_url
                     if row.imdb is None and got["imdb"] is not None:  # OMDb lags on new titles
                         row.imdb, row.imdb_votes = got["imdb"], got["imdb_votes"]
