@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from . import memory
@@ -30,6 +30,7 @@ class SyncReport:
     skipped_unknown_account: int = 0
     unmatched_items: int = 0
     new_follows: int = 0
+    titles_backfilled: int = 0
 
 
 def sync_users(s: Session, plex: PlexClient, report: SyncReport) -> None:
@@ -60,6 +61,9 @@ def _resolve_item(s: Session, plex: PlexClient, rating_key: str, media_type: str
                   title: str, report: SyncReport, create_title: bool = True) -> int | None:
     cached = s.get(PlexItem, rating_key)
     if cached is not None:
+        # The library mirror caches items without a title, so a play of one must still make it
+        if create_title and cached.tmdb_id is not None:
+            _ensure_title(s, cached.tmdb_id, media_type, cached.title or title)
         return cached.tmdb_id
     item = plex.item(rating_key)
     tmdb_id = tmdb_id_from_guids(item) if item else None
@@ -68,11 +72,32 @@ def _resolve_item(s: Session, plex: PlexClient, rating_key: str, media_type: str
         report.unmatched_items += 1
     s.add(PlexItem(rating_key=rating_key, media_type=media_type, title=title,
                    tmdb_id=tmdb_id, match_status=status))
-    if create_title and tmdb_id is not None and s.get(Title, (tmdb_id, media_type)) is None:
-        s.add(Title(tmdb_id=tmdb_id, media_type=media_type, name=title,
-                    year=(item or {}).get("year")))
+    if create_title and tmdb_id is not None:
+        _ensure_title(s, tmdb_id, media_type, title, (item or {}).get("year"))
     s.flush()
     return tmdb_id
+
+
+def _ensure_title(s: Session, tmdb_id: int, media_type: str, name: str,
+                  year: int | None = None) -> None:
+    if s.get(Title, (tmdb_id, media_type)) is None:
+        s.add(Title(tmdb_id=tmdb_id, media_type=media_type, name=name, year=year))
+        s.flush()
+
+
+def backfill_titles(s: Session) -> int:
+    """A title for every played item that lacks one (the poll then fills in name and art).
+    Repairs plays synced while a library-mirror cache hit skipped title creation."""
+    rows = s.execute(
+        select(Play.tmdb_id, Play.media_type, func.max(PlexItem.title))
+        .join(PlexItem, PlexItem.rating_key == Play.rating_key, isouter=True)
+        .join(Title, (Title.tmdb_id == Play.tmdb_id) & (Title.media_type == Play.media_type),
+              isouter=True)
+        .where(Play.tmdb_id.is_not(None), Title.tmdb_id.is_(None))
+        .group_by(Play.tmdb_id, Play.media_type)).all()
+    for tmdb_id, media_type, name in rows:
+        _ensure_title(s, tmdb_id, media_type, name or "")
+    return len(rows)
 
 
 def sync_history(s: Session, plex: PlexClient, report: SyncReport, page_size: int = 200) -> None:
@@ -118,6 +143,7 @@ def sync_history(s: Session, plex: PlexClient, report: SyncReport, page_size: in
         start += len(items)
         if (fresh == 0 and known) or start >= total:  # reached already-synced territory
             break
+    report.titles_backfilled = backfill_titles(s)
 
 
 def aired_episode_count(title: Title) -> int:

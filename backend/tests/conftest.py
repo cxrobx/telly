@@ -50,8 +50,12 @@ def show_item(tmdb_id, year=2022):
 
 
 class FakeTMDB:
-    def __init__(self, shows):
+    def __init__(self, shows, movies=None):
         self.shows = shows  # tmdb_id -> payload (mutable between polls)
+        self.movies = movies or {}
 
     def tv(self, tmdb_id):
         return self.shows.get(tmdb_id)
+
+    def movie(self, tmdb_id):
+        return self.movies.get(tmdb_id)

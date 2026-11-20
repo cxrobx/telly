@@ -95,8 +95,33 @@ def titles_to_poll(s: Session, hot_only: bool, today: date | None = None) -> lis
             if t.last_polled_at is None or (t.next_episode or {}).get("air_date") in window]
 
 
+def fill_movie(title: Title, tmdb: TMDBClient) -> None:
+    """A movie's name, year and art, fetched once: unlike a show, nothing about it changes."""
+    m = tmdb.movie(title.tmdb_id)
+    title.last_polled_at = utcnow()
+    if m is None:
+        title.poll_error = "not_found"
+        return
+    title.poll_error = None
+    title.name = m.get("title") or title.name
+    released = m.get("release_date") or ""
+    title.year = int(released[:4]) if released[:4].isdigit() else title.year
+    title.poster_path = m.get("poster_path")
+    title.backdrop_path = m.get("backdrop_path")
+    title.genres = [g["name"] for g in m.get("genres") or []]
+    title.imdb_id = m.get("imdb_id") or title.imdb_id
+
+
 def poll(s: Session, tmdb: TMDBClient, hot_only: bool = False) -> PollReport:
     report = PollReport()
+    for title in s.scalars(select(Title).where(Title.media_type == "movie",
+                                               Title.last_polled_at.is_(None))).all():
+        try:
+            fill_movie(title, tmdb)
+            s.commit()
+        except Exception as e:  # noqa: BLE001 — retried next poll
+            s.rollback()
+            log.warning("movie fill failed for %s (%s): %s", title.tmdb_id, title.name, e)
     for title in titles_to_poll(s, hot_only):
         try:
             poll_title(s, tmdb, title, report)

@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 
 from telly.models import Event, Follow, Play, PlexItem, Title, User
 from telly.poll import poll, titles_to_poll
-from telly.sync import SyncReport, infer_follows, sync_history, sync_users
+from telly.sync import SyncReport, _resolve_item, infer_follows, sync_history, sync_users
 
 from .conftest import FakePlex, FakeTMDB, ep, show_item
 
@@ -77,6 +77,41 @@ def test_pagination_reaches_older_pages_then_stops_at_known_ones(s):
     newer = [ep(100, 1, 4385, "SNW", 2, 1)] + hist
     _, r2 = synced(s, newer, page_size=3)
     assert r2.new_plays == 1
+
+
+def test_a_play_of_an_item_the_library_mirror_cached_still_makes_a_title(s):
+    # plexdata resolves every library item with create_title=False; a later play must not
+    # find that cache entry and skip the title (the History card would have no name or art)
+    plex = FakePlex(ACCOUNTS, [], {"4385": show_item(103516)})
+    _resolve_item(s, plex, "4385", "tv", "SNW", SyncReport(), create_title=False)
+    s.commit()
+    assert s.get(Title, (103516, "tv")) is None
+    synced(s, [ep(1, 1, 4385, "SNW", 2, 1)])
+    assert s.get(Title, (103516, "tv")).name == "SNW"
+
+
+def test_sync_backfills_a_title_for_plays_that_lack_one(s):
+    synced(s, [ep(1, 1, 4385, "SNW", 2, 1)])
+    s.delete(s.get(Title, (103516, "tv")))
+    s.commit()
+    _, r = synced(s, [ep(1, 1, 4385, "SNW", 2, 1)])
+    assert r.titles_backfilled == 1
+    assert s.get(Title, (103516, "tv")).name == "SNW"
+
+
+def test_poll_fills_a_played_movie_once(s):
+    movie = {"historyKey": "/status/sessions/history/9", "accountID": 1, "type": "movie",
+             "ratingKey": "5134", "title": "A New Hope", "viewedAt": 1790000000}
+    synced(s, [movie], items={"5134": show_item(11, year=1977)})
+    tmdb = FakeTMDB({}, movies={11: {"title": "Star Wars", "release_date": "1977-05-25",
+                                     "poster_path": "/p.jpg", "backdrop_path": "/b.jpg",
+                                     "genres": [{"name": "Adventure"}], "imdb_id": "tt0076759"}})
+    poll(s, tmdb)
+    t = s.get(Title, (11, "movie"))
+    assert (t.name, t.year, t.poster_path, t.imdb_id) == ("Star Wars", 1977, "/p.jpg", "tt0076759")
+    tmdb.movies.clear()
+    poll(s, tmdb)  # already filled: not fetched again, so nothing is lost
+    assert s.get(Title, (11, "movie")).poster_path == "/p.jpg"
 
 
 def test_show_gone_from_library_is_kept_unmatched(s):
