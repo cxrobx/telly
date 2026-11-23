@@ -238,3 +238,64 @@ def record(s: Session, tmdb: TMDBClient | None, plex_id: int, tmdb_id: int, medi
     add(s, tmdb, plex_id, tmdb_id, media_type, status=status, rating=rating)
     return {"ok": True, "title": e.title, "tmdb_id": tmdb_id, "media_type": media_type,
             "liked": liked or loved, "rating": RATINGS[rating]}
+
+
+def plex_status_for(s: Session, plex_id: int, tmdb_id: int, media_type: str,
+                    now: datetime | None = None) -> str | None:
+    """What Plex alone says about one title for them; None if they never played it there."""
+    eps: set[tuple[int, int]] = set()
+    last = None
+    for season, episode, at in s.execute(select(Play.season, Play.episode, Play.viewed_at).where(
+            Play.plex_id == plex_id, Play.tmdb_id == tmdb_id, Play.media_type == media_type)):
+        if media_type == "tv" and season and season > 0:
+            eps.add((season, episode or 0))
+        at = aware(at)
+        last = at if last is None or at > last else last
+    if last is None:
+        return None
+    return plex_status(s.get(Title, (tmdb_id, media_type)), media_type, eps, last, now or utcnow())
+
+
+# Plex already has them up to date on these, so "I watched it" adds nothing to say.
+CURRENT = ("watching", "caught_up", "finished")
+
+
+def note_watched(s: Session, tmdb: TMDBClient | None, plex_id: int, tmdb_id: int, media_type: str,
+                 last_episode: bool = False) -> dict:
+    """They say they watched the newest release of a show ("Watched" on What's new, or "I
+    watched it" to plexbot). History is per title, not per episode, so this is about where they
+    are with the show, and it writes only what History doesn't already know:
+    - a status they set stays as it is (what they set wins, dropped included);
+    - Plex saying watching / caught up / finished already says it, so nothing is written;
+    - otherwise (never played on Plex, or stalled there) the status becomes `finished` when this
+      was the last episode of a show that has ended, else `watching`. caught_up isn't a status
+      a person sets (spec-history), and `finished` on a running show would be wrong.
+    `set` is what was written (None for nothing) and `created` whether it made their row, so
+    Undo can take back exactly that (undo_watched)."""
+    e = s.get(WatchEntry, (plex_id, tmdb_id, media_type))
+    t = s.get(Title, (tmdb_id, media_type))
+    name = (e.title if e else "") or (t.name if t else "")
+    if e is not None and e.status:
+        return {"title": name, "status": e.status, "set": None, "created": False}
+    derived = plex_status_for(s, plex_id, tmdb_id, media_type)
+    if derived in CURRENT:
+        return {"title": name, "status": derived, "set": None, "created": False}
+    status = "finished" if last_episode else "watching"
+    set_status(s, tmdb, plex_id, tmdb_id, media_type, status)
+    return {"title": name, "status": status, "set": status, "created": e is None}
+
+
+def undo_watched(s: Session, plex_id: int, tmdb_id: int, media_type: str, status_set: str | None,
+                 created: bool) -> bool:
+    """Take back what note_watched wrote, unless they've changed that status since (then it's
+    theirs). A row it made goes again, unless they've rated the title meanwhile."""
+    e = s.get(WatchEntry, (plex_id, tmdb_id, media_type))
+    if status_set is None or e is None or e.status != status_set:
+        return False
+    if created and e.rating is None:
+        s.delete(e)
+    else:
+        e.status, e.updated_at = None, utcnow()
+        _tidy(s, e)
+    s.flush()
+    return True

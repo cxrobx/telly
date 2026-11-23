@@ -423,3 +423,21 @@ class ArrNotice(Base):
     dedupe_key: Mapped[str] = mapped_column(String)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     pushed: Mapped[int] = mapped_column(Integer, default=0)  # devices Apple took it for
+
+
+class NewsDismissal(Base):
+    """One person's "not in my What's new" for one event (news.py): they closed it (×) or
+    marked it watched. Only ever read or written for the caller's own plex_id. A watched mark
+    also notes what it wrote to History (history.note_watched), so Undo takes back exactly that
+    and nothing the person changed since."""
+
+    __tablename__ = "news_dismissals"
+    __table_args__ = (UniqueConstraint("plex_id", "event_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    plex_id: Mapped[int] = mapped_column(ForeignKey("users.plex_id"), index=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("events.id"))
+    reason: Mapped[str] = mapped_column(String)  # dismissed | watched
+    dismissed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    history_status: Mapped[str | None] = mapped_column(String)  # the status "watched" set, if any
+    history_created: Mapped[bool] = mapped_column(default=False)  # it made their History row

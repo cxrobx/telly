@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from . import news
 from .clients.tmdb import TMDBClient
 from .models import Event, Follow, LibraryItem, Play, Rating, Title, aware, utcnow
 from .poll import PollReport, poll_title
@@ -155,6 +156,7 @@ def upcoming(s: Session, plex_id: int, days: int = 120, today: date | None = Non
 
 
 def whats_new(s: Session, plex_id: int, days: int = 14) -> list[dict]:
+    """Recent events for the shows they follow, minus the ones they dismissed or marked watched."""
     since = utcnow() - timedelta(days=days)
     follows = _following(s, plex_id)
     rows = s.execute(
@@ -163,6 +165,7 @@ def whats_new(s: Session, plex_id: int, days: int = 14) -> list[dict]:
               & (Title.media_type == "tv"))
         .where(Event.tmdb_id.in_(follows), Event.detected_at >= since)
         .order_by(Event.detected_at.desc(), Event.id.desc()))
+    hidden = news.dismissed_ids(s, plex_id)
     out, released = [], set()
     for ev, t in rows:
         if (ev.payload or {}).get("quiet"):  # old news isn't news
@@ -171,7 +174,11 @@ def whats_new(s: Session, plex_id: int, days: int = 14) -> list[dict]:
             if t.tmdb_id in released:
                 continue
             released.add(t.tmdb_id)
-        out.append({"when": aware(ev.detected_at).date().isoformat(), "show": t.name, "kind": ev.kind,
+        # after the latest-release check, so dismissing S2E10 doesn't bring back S2E9
+        if ev.id in hidden:
+            continue
+        out.append({"event_id": ev.id, "watchable": ev.kind in news.WATCHABLE,
+                    "when": aware(ev.detected_at).date().isoformat(), "show": t.name, "kind": ev.kind,
                     "tmdb_id": t.tmdb_id, "payload": ev.payload,
                     "summary": describe(ev.kind, ev.payload, t.name), **_art(t)})
     return out

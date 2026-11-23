@@ -18,7 +18,7 @@ from itsdangerous import BadSignature, URLSafeTimedSerializer
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
-from . import anime, apns, arr, history, memory, plexbot, recs, shows, taste
+from . import anime, apns, arr, history, memory, news, plexbot, recs, shows, taste
 from .clients.overseerr import OverseerrClient
 from .clients.plextv import PlexTV
 from .clients.tmdb import TMDBClient
@@ -187,6 +187,32 @@ def timeline(days: int = 180, pid: int = Me) -> dict:
 def whats_new(days: int = 60, pid: int = Me) -> dict:
     with session_scope() as s:
         return {"events": shows.whats_new(s, pid, days=min(days, 365))}
+
+
+def _news_write(fn) -> dict:
+    """Someone else's event, or one they can't see, is a 404 like a bad id (spec-identity §7)."""
+    try:
+        with session_scope() as s:
+            return fn(s)
+    except news.NotFound:
+        raise HTTPException(404, "No such event in your What's new.") from None
+    except news.NotWatchable:
+        raise HTTPException(400, "Only a release (episodes out, or in Plex) can be marked watched.") from None
+
+
+@router.post("/whats-new/{event_id}/dismiss")
+def dismiss_news(event_id: int, pid: int = Me) -> dict:
+    return _news_write(lambda s: news.dismiss(s, pid, event_id))
+
+
+@router.post("/whats-new/{event_id}/watched")
+def news_watched(event_id: int, pid: int = Me) -> dict:
+    return _news_write(lambda s: news.watched(s, TMDBClient(), pid, event_id))
+
+
+@router.post("/whats-new/{event_id}/restore")
+def restore_news(event_id: int, pid: int = Me) -> dict:
+    return _news_write(lambda s: news.restore(s, pid, event_id))
 
 
 @router.get("/following")

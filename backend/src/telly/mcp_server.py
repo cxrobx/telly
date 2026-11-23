@@ -16,7 +16,7 @@ import anyio
 from sqlalchemy import select
 from mcp.server.mcpserver import Context, MCPServer
 
-from . import arr, history, memory, recs, shows, taste
+from . import arr, history, memory, news, recs, shows, taste
 from .clients.tmdb import TMDBClient
 from .config import get_settings
 from .db import session_scope
@@ -57,8 +57,36 @@ async def _run(ctx: Context, fn: Callable) -> str:
 @mcp.tool()
 async def whats_new(ctx: Context, days: int = 14) -> str:
     """What happened recently to the shows the caller follows: new episodes and seasons out,
-    renewals, cancellations, premiere dates announced. Use for "anything new?" / "what dropped?"."""
+    renewals, cancellations, premiere dates announced. Use for "anything new?" / "what dropped?".
+    Each item's event_id is what dismiss_news / mark_news_watched take."""
     return await _run(ctx, lambda s, pid: {"events": shows.whats_new(s, pid, days=days)})
+
+
+def _news(fn: Callable) -> Callable:
+    def run(s, pid):
+        try:
+            return fn(s, pid)
+        except news.NotFound:
+            return {"error": "That isn't in their What's new. Get event_id from whats_new."}
+        except news.NotWatchable:
+            return {"error": "Only a release (new episodes out, or in Plex) can be marked watched."}
+    return run
+
+
+@mcp.tool()
+async def dismiss_news(ctx: Context, event_id: int) -> str:
+    """Hide one item from the caller's What's new ("stop showing me that", "clear that one").
+    event_id comes from whats_new. Only their own list changes."""
+    return await _run(ctx, _news(lambda s, pid: news.dismiss(s, pid, event_id)))
+
+
+@mcp.tool()
+async def mark_news_watched(ctx: Context, event_id: int) -> str:
+    """The caller watched a release from their What's new ("I watched it", "seen the new
+    Dark Matter"): it leaves their What's new and their History notes they're watching the show
+    (finished if it was the last episode of an ended show). A status they set themselves is
+    kept. event_id comes from whats_new; only items with watchable=true can be marked."""
+    return await _run(ctx, _news(lambda s, pid: news.watched(s, TMDBClient(), pid, event_id)))
 
 
 @mcp.tool()
