@@ -40,7 +40,7 @@ if secret has TELLY_CLAUDE_OAUTH_TOKEN >/dev/null 2>&1; then
 fi
 
 ssh nas "mkdir -p $DIR"
-secret run "${keys[@]}" -- env TELLY_PUBLIC_URL="$URL" TELLY_COOKIE_SECURE=true TELLY_LLM_ENABLED="$LLM" \
+secret run --no-redact "${keys[@]}" -- env TELLY_PUBLIC_URL="$URL" TELLY_COOKIE_SECURE=true TELLY_LLM_ENABLED="$LLM" \
   TELLY_RADARR_URL=http://192.168.4.22:7878 TELLY_SONARR_URL=http://192.168.4.22:8989 \
   python3 -c 'import os; print("\n".join(f"{k}={os.environ[k]}" for k in sorted(os.environ) if k.startswith("TELLY_") or k == "CLAUDE_CODE_OAUTH_TOKEN"))' \
   | ssh nas "umask 077 && dd of=$DIR/.env status=none && chmod 600 $DIR/.env && wc -l < $DIR/.env | xargs echo lines:"
