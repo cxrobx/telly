@@ -18,7 +18,7 @@ from itsdangerous import BadSignature, URLSafeTimedSerializer
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
-from . import anime, history, memory, plexbot, recs, shows, taste
+from . import anime, apns, arr, history, memory, plexbot, recs, shows, taste
 from .clients.overseerr import OverseerrClient
 from .clients.plextv import PlexTV
 from .clients.tmdb import TMDBClient
@@ -26,7 +26,7 @@ from .config import get_settings
 from .crypto import COOKIE, encrypt_token, make_session, read_session
 from .db import session_scope
 from .mcp_server import _alert_settings
-from .models import AlertPref, IdentityLink, Play, User, utcnow
+from .models import AlertPref, ApnsDevice, IdentityLink, Play, User, utcnow
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
@@ -192,7 +192,11 @@ def whats_new(days: int = 60, pid: int = Me) -> dict:
 @router.get("/following")
 def following(pid: int = Me) -> dict:
     with session_scope() as s:
-        return {"shows": shows.followed_shows(s, pid)}
+        out = shows.followed_shows(s, pid)
+        st = arr.statuses(s, "tv", [x["tmdb_id"] for x in out])
+        for x in out:
+            x["download"] = st.get(x["tmdb_id"])
+        return {"shows": out}
 
 
 @router.get("/recs")
@@ -222,9 +226,19 @@ def feedback(body: FeedbackIn, pid: int = Me) -> dict:
 @router.get("/shows/{tmdb_id}")
 def show(tmdb_id: int, pid: int = Me) -> dict:
     with session_scope() as s:
-        if shows.ensure_title(s, TMDBClient(), tmdb_id) is None:
+        tmdb = TMDBClient()
+        if shows.ensure_title(s, tmdb, tmdb_id) is None:
             raise HTTPException(404, "No such show")
-        return shows.show_detail(s, pid, tmdb_id)
+        return {**shows.show_detail(s, pid, tmdb_id), "download": arr.status(s, "tv", tmdb_id, tmdb)}
+
+
+@router.get("/arr/status/{media_type}/{tmdb_id}")
+def arr_status(media_type: Literal["tv", "movie"], tmdb_id: int, pid: int = Me) -> dict:
+    """Download status for any title (spec-arr §8.2: title data, never who asked for it).
+    `status` is null when Radarr/Sonarr isn't set up or can't be reached."""
+    with session_scope() as s:
+        return {"tmdb_id": tmdb_id, "media_type": media_type,
+                "status": arr.status(s, media_type, tmdb_id, TMDBClient())}
 
 
 @router.post("/shows/{tmdb_id}/follow")
@@ -511,3 +525,47 @@ def plexbot_token(pid: int = Me) -> dict:
     return {"token": plexbot.mint(oid, name), "id": str(oid), "name": name,
             "chat_url": cfg.plexbot_chat_url, "expires_in": plexbot.TTL}
 
+
+
+# ── The owner's admin app (telly-admin) registers for APNs alerts (apns.py) ──────
+
+
+class ApnsIn(BaseModel):
+    token: str
+    environment: Literal["development", "production"] = "production"
+
+
+class ApnsOut(BaseModel):
+    token: str
+
+
+def _owner(pid: int) -> None:
+    with session_scope() as s:
+        if not s.get(User, pid).is_owner:
+            raise HTTPException(403, "Owner only.")
+
+
+@router.post("/apns/register")
+def apns_register(body: ApnsIn, pid: int = Me) -> dict:
+    """Owner only: his admin app's push token. Re-registering moves it between environments."""
+    _owner(pid)
+    token = body.token.strip().lower()
+    if not apns.token_ok(token):
+        raise HTTPException(422, "Not an APNs device token.")
+    with session_scope() as s:
+        row = s.get(ApnsDevice, token)
+        if row is None:
+            s.add(ApnsDevice(token=token, plex_id=pid, environment=body.environment))
+        else:
+            row.plex_id, row.environment = pid, body.environment
+    return {"on": True, "configured": apns.configured()}
+
+
+@router.post("/apns/unregister")
+def apns_unregister(body: ApnsOut, pid: int = Me) -> dict:
+    _owner(pid)
+    with session_scope() as s:
+        row = s.get(ApnsDevice, body.token.strip().lower())
+        if row is not None:
+            s.delete(row)
+    return {"on": False}

@@ -30,6 +30,15 @@ class OverseerrClient:
         r.raise_for_status()
         return [{"id": u["id"], "plex_id": u.get("plexId")} for u in r.json().get("results", [])]
 
+    def requesters(self, media_type: str, tmdb_id: int) -> list[int]:
+        """Overseerr user ids that requested this title (mediaInfo.requests[].requestedBy.id)."""
+        r = self.http.get(f"/{'movie' if media_type == 'movie' else 'tv'}/{tmdb_id}")
+        if r.status_code == 404:
+            return []
+        r.raise_for_status()
+        reqs = ((r.json().get("mediaInfo") or {}).get("requests")) or []
+        return [int(q["requestedBy"]["id"]) for q in reqs if (q.get("requestedBy") or {}).get("id")]
+
     def request(self, overseerr_user_id: int, media_type: str, tmdb_id: int) -> dict:
         """File a request as that person (X-API-User, verified in Overseerr's auth middleware).
         Their own Overseerr permissions and approval rules apply, as if they'd clicked it there."""

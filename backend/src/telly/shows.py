@@ -50,6 +50,16 @@ def describe(kind: str, payload: dict, name: str) -> str:
         if b > a:
             return f"{name} S{s}E{a}–E{b} are out"
         return f"{name} S{s}E{b} is out"
+    if kind == "in_plex":
+        eps = [tuple(e) for e in p.get("episodes") or []]
+        if not eps:
+            return f"{name} is in Plex"
+        (s1, e1), (s2, e2) = eps[0], eps[-1]
+        if len(eps) == 1:
+            return f"{name} S{s1}E{e1} is in Plex"
+        if s1 == s2:
+            return f"{name} S{s1}E{e1}–E{e2} are in Plex"
+        return f"{name}: {len(eps)} new episodes are in Plex"
     return f"{name}: {kind}"
 
 
@@ -71,7 +81,7 @@ def next_season(s: Session, t: Title) -> dict | None:
     for x in sorted(t.seasons or [], key=lambda x: x.get("season") or 0):
         if (x.get("season") or 0) > last:
             return {"season": x["season"], "air_date": x.get("air_date"), "source": "TMDB"}
-    for e in s.scalars(select(Event).where(Event.tmdb_id == t.tmdb_id, Event.kind == "renewed")):
+    for e in s.scalars(select(Event).where(Event.tmdb_id == t.tmdb_id, Event.media_type == "tv", Event.kind == "renewed")):
         if e.payload.get("via") == "news" and (e.payload.get("season") or 0) > last:
             return {"season": e.payload["season"], "air_date": None, "source": e.payload.get("source_name")}
     return None
@@ -132,7 +142,7 @@ def upcoming(s: Session, plex_id: int, days: int = 120, today: date | None = Non
                 undated.append({"show": t.name, "tmdb_id": t.tmdb_id, "season": n,
                                 "note": "renewed, no premiere date yet", "source": "TMDB", **_art(t)})
         listed = {x.get("season") for x in t.seasons or []}
-        for ev in s.scalars(select(Event).where(Event.tmdb_id == t.tmdb_id, Event.kind == "renewed")):
+        for ev in s.scalars(select(Event).where(Event.tmdb_id == t.tmdb_id, Event.media_type == "tv", Event.kind == "renewed")):
             n = (ev.payload or {}).get("season") or 0
             if ev.payload.get("via") == "news" and n > last_season and n not in listed:
                 undated.append({"show": t.name, "tmdb_id": t.tmdb_id, "season": n,
@@ -149,7 +159,8 @@ def whats_new(s: Session, plex_id: int, days: int = 14) -> list[dict]:
     follows = _following(s, plex_id)
     rows = s.execute(
         select(Event, Title)
-        .join(Title, (Title.tmdb_id == Event.tmdb_id) & (Title.media_type == "tv"))
+        .join(Title, (Title.tmdb_id == Event.tmdb_id) & (Title.media_type == Event.media_type)
+              & (Title.media_type == "tv"))
         .where(Event.tmdb_id.in_(follows), Event.detected_at >= since)
         .order_by(Event.detected_at.desc(), Event.id.desc()))
     out, released = [], set()
@@ -232,7 +243,7 @@ def show_detail(s: Session, plex_id: int, tmdb_id: int) -> dict | None:
     f = s.get(Follow, (plex_id, tmdb_id))
     plays = s.execute(select(func.count(), func.max(Play.viewed_at)).where(
         Play.plex_id == plex_id, Play.tmdb_id == tmdb_id, Play.media_type == "tv")).one()
-    events = s.scalars(select(Event).where(Event.tmdb_id == tmdb_id)
+    events = s.scalars(select(Event).where(Event.tmdb_id == tmdb_id, Event.media_type == "tv")
                        .order_by(Event.detected_at.desc()).limit(20))
     in_lib = s.get(LibraryItem, (tmdb_id, "tv")) is not None
     last_season = (t.last_episode or {}).get("season") or 0
@@ -240,7 +251,8 @@ def show_detail(s: Session, plex_id: int, tmdb_id: int) -> dict | None:
     renewed_next = next((
         {"season": e.payload["season"], "source": e.payload.get("source_name"),
          "source_url": e.payload.get("source_url")}
-        for e in s.scalars(select(Event).where(Event.tmdb_id == tmdb_id, Event.kind == "renewed"))
+        for e in s.scalars(select(Event).where(Event.tmdb_id == tmdb_id, Event.media_type == "tv",
+                                               Event.kind == "renewed"))
         if e.payload.get("via") == "news" and e.payload.get("season", 0) > last_season
         and e.payload.get("season") not in listed), None)  # a renewal TMDB hasn't added yet
     return {

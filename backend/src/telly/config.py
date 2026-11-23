@@ -62,6 +62,22 @@ class Settings(BaseSettings):
     plexbot_auth_secret: str = ""
     plexbot_chat_url: str = "https://plexbot.chrisx.art/chat.html?v=5"
 
+    # Radarr / Sonarr (docs/spec-arr.md): read-only status for members, webhooks for alerts.
+    # Keys go in the X-Api-Key header, never a URL. Empty key = that app is off.
+    radarr_url: str = "http://192.168.4.22:7878"
+    radarr_api_key: str = ""
+    sonarr_url: str = "http://192.168.4.22:8989"
+    sonarr_api_key: str = ""
+    # HTTP Basic password on /internal/arr-webhook/* (the *arr Webhook connection). Empty = refuse all.
+    arr_webhook_secret: str = ""
+
+    # Owner's admin app (telly-admin, a Ruddarr fork) gets *arr events over APNs (apns.py).
+    # Dormant until both are set: apns_key_p8 is the .p8 file, base64.
+    apns_key_p8: str = ""
+    apns_key_id: str = ""
+    apns_topic: str = "app.telly.admin"
+    apns_team_id: str = "CCYV5HQZCM"
+
     scheduler_enabled: bool = True
 
 

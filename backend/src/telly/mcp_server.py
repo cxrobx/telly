@@ -16,7 +16,7 @@ import anyio
 from sqlalchemy import select
 from mcp.server.mcpserver import Context, MCPServer
 
-from . import history, memory, recs, shows, taste
+from . import arr, history, memory, recs, shows, taste
 from .clients.tmdb import TMDBClient
 from .config import get_settings
 from .db import session_scope
@@ -212,6 +212,33 @@ async def record_watched(ctx: Context, tmdb_id: int, media_type: str, liked: boo
         return json.dumps({"error": "status must be watching, finished or dropped"})
     return await _run(ctx, lambda s, pid: _first_picks(
         s, pid, taste.record(s, TMDBClient(), pid, tmdb_id, media_type, liked, loved, status)))
+
+
+@mcp.tool()
+async def download_status(ctx: Context, title: str, year: int | None = None,
+                          media_type: str | None = None) -> str:
+    """Is a show or movie on the Plex server, downloading, or missing? ("is Dune downloading?",
+    "when will X be in Plex?"). Read-only: it can't request, grab or delete anything; to get
+    something added, the caller requests it in Seerr. state: downloading (progress %, eta) |
+    missing (wanted, no file yet) | available (in Plex) | unmonitored | not_in_library.
+    Pass the title as they wrote it, plus year or media_type (tv/movie) only if they said one."""
+    if media_type not in (None, "tv", "movie"):
+        return json.dumps({"error": "media_type must be tv or movie"})
+
+    def run(s, pid):
+        tmdb = TMDBClient()
+        found = taste.pick_title(tmdb.search_multi(title), taste.known_keys(s, pid), title, year, media_type)
+        picks = [found["pick"]] if found["pick"] else found["candidates"][:3]
+        if not picks:
+            return {"error": f"Nothing on TMDB matches {title!r}."}
+        out = []
+        for p in picks:
+            st = arr.status(s, p["media_type"], p["tmdb_id"], tmdb)
+            out.append({"title": p.get("title") or p.get("name"), "year": p.get("year"),
+                        "media_type": p["media_type"], "tmdb_id": p["tmdb_id"],
+                        "status": st or {"state": "unknown", "label": "Can't check downloads right now"}})
+        return {"results": out, "ambiguous": found["pick"] is None}
+    return await _run(ctx, run)
 
 
 def _first_picks(s, pid: int, out: dict) -> dict:

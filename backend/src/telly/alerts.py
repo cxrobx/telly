@@ -18,7 +18,8 @@ from sqlalchemy.orm import Session
 
 from .clients.notify import DiscordDM, Ntfy
 from .config import get_settings
-from .models import AlertPref, Delivery, Event, Follow, IdentityLink, Title, User, utcnow
+from .models import (AlertPref, Delivery, Event, Follow, IdentityLink, TasteSignal, Title, User,
+                     WatchlistItem, utcnow)
 from .shows import describe
 
 log = logging.getLogger(__name__)
@@ -46,6 +47,23 @@ def _channels(s: Session, plex_id: int, discord: DiscordDM | None, ntfy: Ntfy | 
     return out
 
 
+def recipients(s: Session, ev: Event) -> list[int]:
+    """Who hears about an event. TMDB events: the show's followers. `in_plex` (arrhook.py):
+    followers, plus anyone who has it on their watchlist or requested it in Seerr."""
+    active = User.removed_at.is_(None)
+    out: set[int] = set()
+    if ev.media_type == "tv":
+        out |= set(s.scalars(select(Follow.plex_id).join(User, User.plex_id == Follow.plex_id).where(
+            Follow.tmdb_id == ev.tmdb_id, Follow.state == "following", active)))
+    if ev.kind == "in_plex":
+        unfollowed = set(s.scalars(select(Follow.plex_id).where(
+            Follow.tmdb_id == ev.tmdb_id, Follow.state == "unfollowed"))) if ev.media_type == "tv" else set()
+        for model, extra in ((WatchlistItem, ()), (TasteSignal, (TasteSignal.source == "overseerr",))):
+            out |= set(s.scalars(select(model.plex_id).join(User, User.plex_id == model.plex_id).where(
+                model.tmdb_id == ev.tmdb_id, model.media_type == ev.media_type, active, *extra))) - unfollowed
+    return sorted(out)
+
+
 def deliver(s: Session, discord: DiscordDM | None, ntfy: Ntfy | None,
             now: datetime | None = None) -> DeliveryReport:
     cfg = get_settings()
@@ -56,12 +74,14 @@ def deliver(s: Session, discord: DiscordDM | None, ntfy: Ntfy | None,
     for ev in events:
         if (ev.payload or {}).get("quiet"):
             continue  # recorded for the timeline, not news (e.g. a renewal announced months ago)
-        title = s.get(Title, (ev.tmdb_id, "tv"))
-        name = title.name if title else f"TMDB {ev.tmdb_id}"
+        title = s.get(Title, (ev.tmdb_id, ev.media_type))
+        name = (title.name if title and title.name else None) or (ev.payload or {}).get("title") \
+            or f"TMDB {ev.tmdb_id}"
         text = describe(ev.kind, ev.payload, name)
-        followers = s.scalars(select(Follow.plex_id).join(User, User.plex_id == Follow.plex_id).where(
-            Follow.tmdb_id == ev.tmdb_id, Follow.state == "following", User.removed_at.is_(None)))
-        for plex_id in list(followers):
+        # the show page is TV only; a movie alert opens Telly
+        link = f"{cfg.public_url}/show/{ev.tmdb_id}" if ev.media_type == "tv" else cfg.public_url
+        emoji = "🍿" if ev.kind == "in_plex" else "📺"
+        for plex_id in recipients(s, ev):
             for channel, target in _channels(s, plex_id, discord, ntfy):
                 d = s.scalar(select(Delivery).where(Delivery.plex_id == plex_id,
                                                     Delivery.event_id == ev.id,
@@ -80,12 +100,12 @@ def deliver(s: Session, discord: DiscordDM | None, ntfy: Ntfy | None,
                 try:
                     if channel == "discord":
                         embed = {"title": name, "description": text, "color": 0x8B5CF6,
-                                 "url": f"{cfg.public_url}/show/{ev.tmdb_id}"}
+                                 "url": link}
                         if title and title.poster_path:
                             embed["thumbnail"] = {"url": TMDB_IMG + title.poster_path}
-                        discord.send(target, f"📺 {text}", embed)
+                        discord.send(target, f"{emoji} {text}", embed)
                     else:
-                        ntfy.send(target, "Telly", text, click=f"{cfg.public_url}/show/{ev.tmdb_id}")
+                        ntfy.send(target, "Telly", text, click=link)
                 except Exception as e:  # noqa: BLE001 — one bad send must not stop the rest
                     d.status, d.error = "failed", f"{type(e).__name__}: {e}"[:300]
                     report.failed += 1

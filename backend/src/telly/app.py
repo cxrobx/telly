@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import base64
+import hmac
+import ipaddress
 import logging
+import threading
 from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -12,7 +16,8 @@ from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
-from . import linking
+from . import arrhook, linking
+from .clients.overseerr import OverseerrClient
 from .clients.plextv import PlexTV
 from .config import get_settings
 from .db import session_scope
@@ -149,6 +154,91 @@ def link_start(body: CodeIn) -> dict:
 @router.post("/api/link/finish")
 def link_finish(body: CodeIn) -> dict:
     return _link_call(lambda s, c: linking.finish(s, PlexTV(), c), body.code)
+
+
+# ── Radarr/Sonarr webhooks (docs/spec-arr.md phase 2) ───────────────────────────
+
+# LAN, Docker and the tailnet only. The public site proxies /api/* alone, so this is belt and
+# braces: a request that came through Cloudflare carries cf-connecting-ip and is refused too.
+_INTERNAL_NETS = [ipaddress.ip_network(n) for n in (
+    "127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "::1/128")]
+
+
+def _internal(request: Request) -> bool:
+    if request.headers.get("cf-connecting-ip") or request.headers.get("cf-ray"):
+        return False
+    host = request.client.host if request.client else ""
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return host == "testclient"  # Starlette's TestClient
+    return any(ip in n for n in _INTERNAL_NETS)
+
+
+def webhook_authorized(header: str | None) -> bool:
+    """HTTP Basic, password = TELLY_ARR_WEBHOOK_SECRET (what the *arr Webhook connection sends).
+    The username isn't a secret and isn't checked. No secret configured → nobody gets in."""
+    secret = get_settings().arr_webhook_secret
+    if not secret or not header or not header.lower().startswith("basic "):
+        return False
+    try:
+        _user, _, password = base64.b64decode(header[6:].strip()).decode().partition(":")
+    except (ValueError, UnicodeDecodeError):
+        return False
+    return hmac.compare_digest(password.encode(), secret.encode())
+
+
+_deliver_timer: threading.Timer | None = None
+_deliver_lock = threading.Lock()
+DELIVER_AFTER = 90.0  # seconds after the last import: a season pack's webhooks become one alert
+
+
+def schedule_delivery() -> None:
+    """Send member alerts shortly after the imports stop (the hourly run is the backstop)."""
+    global _deliver_timer
+    from .jobs import run_deliver
+
+    def go():
+        try:
+            run_deliver()
+        except Exception as e:  # noqa: BLE001
+            log.warning("arr delivery failed: %s", e)
+
+    with _deliver_lock:
+        if _deliver_timer is not None:
+            _deliver_timer.cancel()
+        _deliver_timer = threading.Timer(DELIVER_AFTER, go)
+        _deliver_timer.daemon = True
+        _deliver_timer.start()
+
+
+@router.post("/internal/arr-webhook/{app_name}")
+async def arr_webhook(app_name: str, request: Request) -> JSONResponse:
+    if app_name not in arrhook.APPS:
+        return JSONResponse({"error": "unknown app"}, status_code=404)
+    if not _internal(request):
+        return JSONResponse({"error": "not here"}, status_code=404)
+    if not webhook_authorized(request.headers.get("authorization")):
+        log.warning("arr webhook: refused an unauthenticated %s call", app_name)
+        return JSONResponse({"error": "unauthorized"}, status_code=401,
+                            headers={"WWW-Authenticate": 'Basic realm="telly"'})
+    try:
+        body = await request.json()
+    except ValueError:
+        return JSONResponse({"error": "JSON only"}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "JSON object only"}, status_code=400)
+
+    def run() -> dict:
+        with session_scope() as s:
+            overseerr = OverseerrClient() if get_settings().overseerr_api_key else None
+            return arrhook.handle(s, app_name, body, overseerr)
+
+    import anyio
+    out = await anyio.to_thread.run_sync(run)
+    if out.get("member_event"):
+        schedule_delivery()
+    return JSONResponse(out)
 
 
 app = create_app()

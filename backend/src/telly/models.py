@@ -122,7 +122,10 @@ class Event(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     tmdb_id: Mapped[int] = mapped_column(Integer, index=True)
-    kind: Mapped[str] = mapped_column(String)  # renewed | canceled | ended | season_dated | episodes_aired
+    # "movie" only for in_plex events from Radarr; everything TMDB detects is a show.
+    media_type: Mapped[str] = mapped_column(String, default="tv", server_default="tv")
+    # renewed | canceled | ended | season_dated | episodes_aired | in_plex (arrhook.py)
+    kind: Mapped[str] = mapped_column(String)
     payload: Mapped[dict] = mapped_column(JSON, default=dict)
     dedupe_key: Mapped[str] = mapped_column(String)
     detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
@@ -387,3 +390,36 @@ class Memory(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # plans only
+
+
+class ApnsDevice(Base):
+    """The owner's admin app (telly-admin) on a phone with alerts on: its APNs token, and which
+    APNs it belongs to (a Debug build is `development`, TestFlight/App Store is `production`).
+    Registration is owner-only (api.py); Apple's "gone" answers delete the row (apns.py)."""
+
+    __tablename__ = "apns_devices"
+
+    token: Mapped[str] = mapped_column(String(200), primary_key=True)
+    plex_id: Mapped[int] = mapped_column(ForeignKey("users.plex_id"), index=True)
+    environment: Mapped[str] = mapped_column(String, default="production")  # development | production
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ArrNotice(Base):
+    """One Radarr/Sonarr webhook event, for the owner's admin alerts (arrhook.py). Only ids,
+    the title, the event and quality are kept: never release names, paths, indexers or clients.
+    dedupe_key makes an *arr retry a no-op."""
+
+    __tablename__ = "arr_notices"
+    __table_args__ = (UniqueConstraint("dedupe_key"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    app: Mapped[str] = mapped_column(String)  # radarr | sonarr
+    kind: Mapped[str] = mapped_column(String)  # grab | download | upgrade | delete | health | test
+    arr_id: Mapped[int | None] = mapped_column(Integer)  # Radarr movie id / Sonarr series id
+    tmdb_id: Mapped[int | None] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String, default="")
+    detail: Mapped[str] = mapped_column(String, default="")  # quality, episode, or the health message
+    dedupe_key: Mapped[str] = mapped_column(String)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    pushed: Mapped[int] = mapped_column(Integer, default=0)  # devices Apple took it for

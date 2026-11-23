@@ -90,7 +90,7 @@ def main() -> None:
         from .models import Event, Title
         with session_scope() as s:
             q = (select(Event, Title.name).join(Title, (Title.tmdb_id == Event.tmdb_id)
-                 & (Title.media_type == "tv"), isouter=True)
+                 & (Title.media_type == Event.media_type), isouter=True)
                  .order_by(Event.detected_at.desc()).limit(args.limit))
             for ev, name in s.execute(q):
                 print(ev.detected_at.isoformat(timespec="minutes"), name, ev.kind, ev.payload)
