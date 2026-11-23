@@ -179,6 +179,14 @@ def test_downloading_carries_progress_and_eta_and_nothing_about_the_release(env)
         assert leak not in blob
 
 
+def test_an_unsized_queue_item_is_queued_not_zero_percent(env, fake_arr):
+    radarr, _ = fake_arr
+    radarr.q = [{"movieId": 8, "size": 1, "sizeleft": 1, "status": "downloading"}]
+    with db.session_scope() as s:
+        st = arr.movie_status(s, 901, now=NOW)
+    assert (st["state"], st["label"], st["progress"]) == ("downloading", "Queued", None)
+
+
 def test_in_plex_without_arr_is_available(env):
     with db.session_scope() as s:
         s.add(LibraryItem(tmdb_id=777, media_type="movie", rating_key="k"))

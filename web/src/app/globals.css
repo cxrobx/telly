@@ -228,6 +228,13 @@ input, textarea, select { font: inherit; font-size: 16px; }
 .chip[data-tone="good"] { color: var(--good); background: var(--good-soft); border-color: rgba(111, 227, 176, 0.18); }
 .chip[data-tone="bad"] { color: var(--bad); background: var(--bad-soft); border-color: rgba(255, 138, 148, 0.18); }
 
+/* Radarr/Sonarr status (DownloadChip). The bar is a static fill: it changes on reload, never animates while idle. */
+.download-chip { position: relative; min-width: 0; }
+.download-label { overflow: hidden; text-overflow: ellipsis; }
+.download-bar { position: absolute; left: 10px; right: 10px; bottom: 1px; height: 2px; border-radius: 2px; background: rgba(245, 181, 68, 0.22); }
+.download-bar::after { content: ""; position: absolute; inset: 0; width: var(--p); border-radius: inherit; background: var(--accent); }
+.pick-body > .download-chip { align-self: flex-start; justify-self: start; }
+
 .pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
 .pill {
   padding: 8px 16px; border-radius: 999px; cursor: pointer; font-weight: 500; font-size: 14px;

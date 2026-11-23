@@ -88,7 +88,19 @@ export type Home = {
 
 export type Timeline = { from: string; to: string; dated: TimelineItem[]; renewed_no_date: Undated[] };
 
+/** Radarr/Sonarr status (backend arr.py): about the title, never who requested it. */
+export type Download = {
+  state: "downloading" | "missing" | "available" | "unmonitored" | "not_in_library";
+  label: string;
+  tone: "good" | "accent" | "bad" | "muted";
+  progress: number | null;
+  eta: string | null;
+  quality: string | null;
+  missing?: number;
+};
+
 export type Followed = Art & {
+  download?: Download | null;
   tmdb_id: number;
   name: string;
   year: number | null;
@@ -102,6 +114,7 @@ export type Followed = Art & {
 };
 
 export type ShowDetail = Art & {
+  download?: Download | null;
   tmdb_id: number;
   imdb_id: string | null;
   name: string;

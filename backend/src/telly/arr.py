@@ -117,8 +117,10 @@ def _parse(ts: str | None) -> datetime | None:
 
 
 def _downloading(items: list[dict], now: datetime) -> dict:
-    size = sum(max(i.get("size") or 0, 0) for i in items)
-    left = sum(max(i.get("sizeleft") or 0, 0) for i in items)
+    # Sonarr/Radarr report size 1 until the client knows the real size (seen live 2026-11-22)
+    sized = [i for i in items if (i.get("size") or 0) > 1]
+    size = sum(i["size"] for i in sized)
+    left = sum(max(i.get("sizeleft") or 0, 0) for i in sized)
     pct = round(100 * (size - left) / size) if size else None
     finishing = all((i.get("status") or "").lower() == "completed" for i in items)
     etas = [e for e in (_parse(i.get("estimatedCompletionTime")) for i in items) if e and e > now]
@@ -126,7 +128,7 @@ def _downloading(items: list[dict], now: datetime) -> dict:
     if finishing:
         label = "Importing"
     else:
-        label = "Downloading" + (f" {pct}%" if pct is not None else "")
+        label = f"Downloading {pct}%" if pct is not None else "Queued"
         if (t := _eta_text(eta, now)):
             label += f" · {t}"
     if len(items) > 1:

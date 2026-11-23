@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Check, Library, Plus, ThumbsDown, ThumbsUp, TrendingUp, Clapperboard } from "lucide-react";
+import { ArrowDownToLine, Check, CircleAlert, CircleDashed, Library, Plus, ThumbsDown, ThumbsUp, TrendingUp, Clapperboard } from "lucide-react";
 import { Scores } from "./scores";
 import {
   api,
@@ -10,6 +10,7 @@ import {
   fmtDate,
   poster,
   relDay,
+  type Download,
   type NewsEvent,
   type Pick,
   type TimelineItem,
@@ -74,6 +75,23 @@ export function Chip({ children, tone = "neutral" }: { children: React.ReactNode
   return (
     <span className="chip" data-tone={tone}>
       {children}
+    </span>
+  );
+}
+
+/** A Radarr/Sonarr status chip. `compact` (Following cards) skips the quiet states. */
+export function DownloadChip({ d, compact = false }: { d?: Download | null; compact?: boolean }) {
+  if (!d) return null;
+  if (compact && (d.state === "unmonitored" || d.state === "not_in_library")) return null;
+  const Icon = d.state === "downloading" ? ArrowDownToLine : d.state === "missing" ? CircleAlert : d.state === "available" ? Library : CircleDashed;
+  const tone = d.tone === "muted" ? "neutral" : d.tone;
+  return (
+    <span className="chip download-chip" data-tone={tone} data-state={d.state} title={d.label}>
+      <Icon size={12} aria-hidden />
+      <span className="download-label">{compact ? (d.state === "available" ? "In Plex" : d.label.split(" · ")[0]) : d.label}</span>
+      {d.state === "downloading" && d.progress != null && (
+        <span className="download-bar" aria-hidden style={{ ["--p" as string]: `${d.progress}%` }} />
+      )}
     </span>
   );
 }

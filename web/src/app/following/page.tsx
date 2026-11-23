@@ -5,7 +5,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { BellOff, Check, Plus, Search, X } from "lucide-react";
 import { useBackdrop } from "@/components/backdrop";
-import { Chip, Empty, Poster, Section, Skeleton, statusTone } from "@/components/ui";
+import { Chip, DownloadChip, Empty, Poster, Section, Skeleton, statusTone } from "@/components/ui";
 import { Scores } from "@/components/scores";
 import { api, backdrop, epLabel, fmtDate, relDay, useApi, type Followed } from "@/lib/api";
 
@@ -118,6 +118,7 @@ function FollowCard({ show, onUnfollow }: { show: Followed; onUnfollow: () => vo
         </Link>
         <Scores title={show.name} ratings={show.ratings} compact />
         <p className={`follow-next ${line.tone}`}>{line.text}</p>
+        <DownloadChip d={show.download} compact />
         <div className="pick-actions">
           <span className="follow-why">{WHY[show.followed_because]}</span>
           <button className="icon-btn follow-unfollow" onClick={onUnfollow} aria-label={`Unfollow ${show.name}`} title="Unfollow">

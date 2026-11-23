@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { BellPlus, BellOff, ExternalLink, Library } from "lucide-react";
 import { useBackdrop } from "@/components/backdrop";
-import { Chip, Empty, Poster, Section, Skeleton, statusTone } from "@/components/ui";
+import { Chip, DownloadChip, Empty, Poster, Section, Skeleton, statusTone } from "@/components/ui";
 import { Scores } from "@/components/scores";
 import { api, backdrop, epLabel, fmtDate, relDay, useApi, type ShowDetail } from "@/lib/api";
 
@@ -37,10 +37,14 @@ export default function ShowPage() {
             <Chip tone={statusTone(data.status)}>{data.status ?? "Unknown"}</Chip>
             {data.year && <span className="muted">{data.year}</span>}
             {data.networks?.[0] && <span className="muted">{data.networks[0]}</span>}
-            {data.in_library && (
-              <Chip tone="good">
-                <Library size={12} /> On Plex
-              </Chip>
+            {data.download ? (
+              <DownloadChip d={data.download} />
+            ) : (
+              data.in_library && (
+                <Chip tone="good">
+                  <Library size={12} /> On Plex
+                </Chip>
+              )
             )}
           </div>
           <Scores title={data.name} ratings={data.ratings} />
