@@ -20,6 +20,19 @@ keys=(-k TELLY_PLEX_TOKEN=PLEX_TOKEN -k TELLY_TMDB_TOKEN=TMDB_READ_TOKEN -k TELL
 if secret has MDBLIST_API_KEY >/dev/null 2>&1; then keys+=(-k TELLY_MDBLIST_API_KEY=MDBLIST_API_KEY); fi
 # plexbot's web chat inside Telly (plexbot.py): the secret plex-agent verifies web tokens with
 if secret has PLEXBOT_AUTH_SECRET >/dev/null 2>&1; then keys+=(-k TELLY_PLEXBOT_AUTH_SECRET=PLEXBOT_AUTH_SECRET); fi
+# Radarr/Sonarr (docs/spec-arr.md): read-only status keys, and the webhook password the *arr
+# Webhook connections send. The webhook secret is generated once, straight into the Keychain.
+keys+=(-k TELLY_RADARR_API_KEY=RADARR_API_KEY -k TELLY_SONARR_API_KEY=SONARR_API_KEY)
+if ! secret has TELLY_ARR_WEBHOOK_SECRET >/dev/null 2>&1; then
+  openssl rand -hex 32 | secret set TELLY_ARR_WEBHOOK_SECRET >/dev/null
+fi
+keys+=(-k TELLY_ARR_WEBHOOK_SECRET)
+# APNs for the owner's admin app (apns.py): optional; without it admin alerts stay dormant.
+APNS=false
+if secret has APNS_KEY_P8 >/dev/null 2>&1 && secret has APNS_KEY_ID >/dev/null 2>&1; then
+  keys+=(-k TELLY_APNS_KEY_P8=APNS_KEY_P8 -k TELLY_APNS_KEY_ID=APNS_KEY_ID)
+  APNS=true
+fi
 LLM=false
 if secret has TELLY_CLAUDE_OAUTH_TOKEN >/dev/null 2>&1; then
   keys+=(-k CLAUDE_CODE_OAUTH_TOKEN=TELLY_CLAUDE_OAUTH_TOKEN)
@@ -28,6 +41,7 @@ fi
 
 ssh nas "mkdir -p $DIR"
 secret run "${keys[@]}" -- env TELLY_PUBLIC_URL="$URL" TELLY_COOKIE_SECURE=true TELLY_LLM_ENABLED="$LLM" \
+  TELLY_RADARR_URL=http://192.168.4.22:7878 TELLY_SONARR_URL=http://192.168.4.22:8989 \
   python3 -c 'import os; print("\n".join(f"{k}={os.environ[k]}" for k in sorted(os.environ) if k.startswith("TELLY_") or k == "CLAUDE_CODE_OAUTH_TOKEN"))' \
   | ssh nas "umask 077 && dd of=$DIR/.env status=none && chmod 600 $DIR/.env && wc -l < $DIR/.env | xargs echo lines:"
-echo "public url: $URL · headless Claude: $LLM"
+echo "public url: $URL · headless Claude: $LLM · admin APNs: $APNS"

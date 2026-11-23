@@ -1,6 +1,6 @@
 # Telly — Radarr/Sonarr (Ruddarr parity) spec
 
-Status: **draft, 2026-11-22, waiting on Chris's review** (decisions in §8).
+Status: **approved 2026-11-22 (decisions in §8). Phases 1 and 2 shipped 2026-11-22**: read-only clients and member status (`arr.py`), webhook alerts (`arrhook.py`), plus owner APNs for the admin app (`apns.py`, dormant until the key is set). Phases 3–5 moved to the iOS app (§8.3).
 
 Goal: everything Ruddarr (MIT, iOS Radarr/Sonarr remote) does, inside Telly, so the NAS's
 Radarr and Sonarr are run from the same app members already use. Ruddarr's feature list was

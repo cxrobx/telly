@@ -11,6 +11,8 @@ and in the Overseerr widget.
 
 **Read `docs/spec-history.md` before touching History, ratings, or how taste feeds picks.**
 
+**Read `docs/spec-arr.md` before touching Radarr/Sonarr, the webhook or APNs.** Telly is read-only toward them: no grab, delete or monitor route anywhere (a test checks), and plexbot only gets `download_status`.
+
 **Read `docs/spec-identity.md` before touching auth, users, the MCP, or alerts.** It's the
 approved identity/access spec: identity is the plex.tv account id, and no MCP tool or web
 route takes a user parameter.
@@ -28,7 +30,7 @@ SQLite on purpose: a handful of users, one writer, no extra container on the NAS
 
 ```bash
 cd backend
-uv run pytest -q                 # 194 tests: detection, sync/poll, MCP scoping + /link + alerts, web auth/scoping, recs + first picks, renewals, ratings, taste, history, memory, migrations
+uv run pytest -q                 # 261 tests: detection, sync/poll, MCP scoping + /link + alerts, web auth/scoping, recs + first picks, renewals, ratings, taste, history, memory, Radarr/Sonarr status + webhooks + APNs, migrations
 uv run telly migrate             # alembic upgrade head
 uv run telly run                 # sync → plexdata → poll → infer → deliver → recs (the nightly job, 04:10 ET)
 uv run telly poll --hot          # only shows airing yesterday/today/tomorrow (hourly, then deliver)
@@ -70,6 +72,9 @@ unless set (a test checks it); it's never set on the NAS.
 | (taste in chat) | MCP `record_taste(title, liked, loved, status)` puts it on their History (Loved it / Liked it / Not for me; optional watching / finished / dropped). It finds the title itself (`taste.pick_title`: something they've watched wins, then an exact name, then TMDB order; two same-name titles nobody watched → `ambiguous`, never a guess) and records it in one call. plexbot's fast path calls it directly. `record_watched` is for when the tmdb_id is already known |
 | `shows.py` | Per-person reads/writes shared by the MCP tools and the web API |
 | `plexbot.py` | Signs plexbot web-chat tokens for signed-in members (`GET /api/plexbot-token`), in the exact format the Overseerr Worker uses: same secret (`PLEXBOT_AUTH_SECRET`), identity = the member's Overseerr id. No Overseerr account → 404 and no chat button. Format pinned by `PLEXBOT_WEB_VECTOR` in both repos' tests |
+| `arr.py` | **Download status** for a title (docs/spec-arr.md): Radarr movie by `tmdbId`, Sonarr series by `tmdbId` (all 84 have one) else `tvdbId` from TMDB. Whole library + queue per app cached 60 s. States: downloading (% and ETA from the queue; size 1 means not known yet → "Queued") / missing / available (has a file, or in Plex) / unmonitored / not_in_library. Never a requester, release name, indexer or client. `GET /api/arr/status/{tv\|movie}/{tmdb_id}` (members), `download` on the show page and Following, MCP `download_status(title)`. Clients in `clients/radarr.py` / `sonarr.py` are GET-only, key in `X-Api-Key` |
+| `arrhook.py` | `POST /internal/arr-webhook/{radarr\|sonarr}` (in `app.py`): HTTP Basic password = `TELLY_ARR_WEBHOOK_SECRET` (constant-time), private/tailnet source IPs only, refused if a Cloudflare header is present. Download (not upgrade) → an `in_plex` Event through the normal fan-out to followers, watchlisters and Seerr requesters (asked live, stored as their `overseerr` taste signal); a season's episodes within 2 h merge into one alert, delivered 90 s after the last import (hourly run is the backstop). Movies are `events.media_type='movie'`, never on a show page. Grab/download/upgrade/delete/health → `arr_notices` (ids, title, quality only) + APNs to the owner |
+| `apns.py` | Owner-only admin alerts to the telly-admin iOS app (topic `app.telly.admin`, team `CCYV5HQZCM`), ported from cxfeed: ES256 provider token, HTTP/2 to Apple only, tokens Apple calls gone are deleted, `deeplink` = `tellyadmin://movies/open/{radarrId}` / `series/open/{sonarrId}`. `POST /api/apns/register` / `unregister` are owner-only (403 otherwise). **Dormant** (logs once) until `TELLY_APNS_KEY_P8` (base64 .p8) + `TELLY_APNS_KEY_ID` are set |
 | `app.py` | `create_app()` (the MCP session manager runs once per instance, so tests build fresh apps) + the scheduler |
 
 **The token contract** is pinned in both repos by one vector: `CONTRACT_TOKEN` in
@@ -122,6 +127,7 @@ It builds on the Mac, so `/usr/local/bin` must be on `PATH` for Docker.
   (a plain restart doesn't re-read `.env`). Without it, picks keep their earlier reasons and renewals are skipped.
 - plexbot needs `TELLY_SHARED_SECRET` + `TELLY_URL` in its NAS `.env` (set 2026-09-27).
 - Telly needs `TELLY_PLEXBOT_AUTH_SECRET` (Keychain `PLEXBOT_AUTH_SECRET`, via `nas-env.sh`) for the embedded chat; unset → the button never shows.
+- **Radarr/Sonarr**: `nas-env.sh` writes the LAN URLs, Keychain `RADARR_API_KEY` / `SONARR_API_KEY`, and `TELLY_ARR_WEBHOOK_SECRET` (generated into the Keychain on first run). Each app has a Webhook connection named **Telly** → `http://192.168.4.22:18940/internal/arr-webhook/radarr` (resp. `sonarr`), user `telly`, that secret as password, on grab/import/upgrade/delete/health. Leave the Plex, Pulsarr and Ruddarr connections alone. APNs goes live once `APNS_KEY_P8` + `APNS_KEY_ID` are in the Keychain: re-run `nas-env.sh` and force-recreate `telly-api`.
 - OMDb (`OMDB_API_KEY`) and MDBList (`MDBLIST_API_KEY`) free keys: 1,000 calls a day each; a nightly run uses ~150.
 
 ## Gotchas
