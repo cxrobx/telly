@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowDownToLine, Check, CircleAlert, CircleDashed, Library, Plus, ThumbsDown, ThumbsUp, TrendingUp, Clapperboard } from "lucide-react";
+import { ArrowDownToLine, Check, CircleAlert, CircleDashed, Library, Plus, ThumbsDown, ThumbsUp, TrendingUp, Clapperboard, X } from "lucide-react";
 import { Scores } from "./scores";
 import {
   api,
@@ -130,23 +130,62 @@ const KIND_LABEL: Record<NewsEvent["kind"], string> = {
   ended: "Ended",
   season_dated: "Date set",
   episodes_aired: "Out now",
+  in_plex: "In Plex",
 };
 
-export function EventRow({ ev }: { ev: NewsEvent }) {
+export type NewsAction = "dismissed" | "watched";
+
+/** One What's new item. With onAct, it gets Watched (releases only) and a dismiss ×; the
+ *  list removes it optimistically once it has animated away, and offers Undo. */
+export function EventRow({ ev, onAct }: { ev: NewsEvent; onAct?: (ev: NewsEvent, action: NewsAction) => void }) {
   const tone = ev.kind === "canceled" || ev.kind === "ended" ? "bad" : ev.kind === "renewed" ? "good" : "accent";
+  const [leaving, setLeaving] = useState(false);
+  const act = (action: NewsAction) => {
+    setLeaving(true);
+    setTimeout(() => onAct?.(ev, action), 260);
+  };
   return (
-    <Link href={`/show/${ev.tmdb_id}`} className="event-row lift">
-      <div className="event-thumb">
-        <Poster path={ev.poster_path} alt={ev.show} size="w92" />
-      </div>
-      <div className="event-body">
-        <div className="event-top">
-          <Chip tone={tone}>{KIND_LABEL[ev.kind]}</Chip>
-          <span className="event-when">{fmtDate(ev.when)}</span>
+    <div className="event-row" role="listitem" data-leaving={leaving}>
+      <Link href={`/show/${ev.tmdb_id}`} className="event-link lift">
+        <div className="event-thumb">
+          <Poster path={ev.poster_path} alt={ev.show} size="w92" />
         </div>
-        <div className="event-summary">{ev.summary}</div>
-      </div>
-    </Link>
+        <div className="event-body">
+          <div className="event-top">
+            <Chip tone={tone}>{KIND_LABEL[ev.kind] ?? ev.kind}</Chip>
+            <span className="event-when">{fmtDate(ev.when)}</span>
+          </div>
+          <div className="event-summary">{ev.summary}</div>
+        </div>
+      </Link>
+      {onAct && (
+        <div className="event-actions">
+          {ev.watchable && (
+            <button className="icon-btn event-watched" title="Mark watched" aria-label={`Mark watched: ${ev.summary}`} disabled={leaving} onClick={() => act("watched")}>
+              <Check size={15} />
+              <span>Watched</span>
+            </button>
+          )}
+          <button className="icon-btn ghost event-dismiss" title="Dismiss" aria-label={`Dismiss: ${ev.summary}`} disabled={leaving} onClick={() => act("dismissed")}>
+            <X size={16} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A floating glass note with an optional Undo. Owners clear it (a timer, or Undo). */
+export function Toast({ children, onUndo }: { children: React.ReactNode; onUndo?: () => void }) {
+  return (
+    <div className="toast" role="status" aria-live="polite">
+      <span className="toast-text">{children}</span>
+      {onUndo && (
+        <button className="btn btn-small ghost toast-undo" onClick={onUndo}>
+          Undo
+        </button>
+      )}
+    </div>
   );
 }
 

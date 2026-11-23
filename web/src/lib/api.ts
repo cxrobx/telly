@@ -24,12 +24,22 @@ export type Undated = Art & {
 };
 
 export type NewsEvent = Art & {
+  event_id: number; // what /whats-new/{event_id}/dismiss | watched | restore take
+  watchable: boolean; // a release (episodes out, or in Plex): it can be marked watched
   when: string;
   show: string;
   tmdb_id: number;
-  kind: "renewed" | "canceled" | "ended" | "season_dated" | "episodes_aired";
+  kind: "renewed" | "canceled" | "ended" | "season_dated" | "episodes_aired" | "in_plex";
   summary: string;
   payload: Record<string, unknown>;
+};
+
+/** POST /whats-new/{event_id}/dismiss | watched (backend news.py). */
+export type NewsDismissed = {
+  ok: true;
+  event_id: number;
+  reason: "dismissed" | "watched";
+  history?: { title: string; tmdb_id: number; media_type: "tv"; status: string | null; changed: boolean };
 };
 
 export type Ratings = {

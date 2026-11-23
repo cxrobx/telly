@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, CalendarClock, X } from "lucide-react";
 import { useBackdrop } from "@/components/backdrop";
 import { Tell } from "@/components/taste";
-import { Chip, EpisodeCard, EventRow, PickCard, Rail, Section, Skeleton, Empty } from "@/components/ui";
-import { api, backdrop, epLabel, fmtDate, relDay, useApi, type Home, type Me } from "@/lib/api";
+import { Chip, EpisodeCard, EventRow, PickCard, Rail, Section, Skeleton, Empty, Toast, type NewsAction } from "@/components/ui";
+import { api, backdrop, epLabel, fmtDate, relDay, useApi, type Home, type Me, type NewsDismissed, type NewsEvent } from "@/lib/api";
 
 function Hero({ data }: { data: Home }) {
   const h = data.hero;
@@ -95,9 +95,58 @@ function TasteStarter({ ready, waiting, onTold, onClose }: { ready: boolean; wai
   );
 }
 
+type Undo = { ev: NewsEvent; at: number; text: string; undo: boolean };
+
+/** Dismiss / Mark watched on What's new: gone at once, then the API, with Undo (restore) for a
+ *  few seconds. A failed write puts the item back. */
+function useNewsActions(data: Home | null, setData: (fn: (d: Home | null) => Home | null) => void) {
+  const [toast, setToast] = useState<Undo | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const show = useCallback((t: Undo | null, ms = 6000) => {
+    if (timer.current) clearTimeout(timer.current);
+    setToast(t);
+    if (t) timer.current = setTimeout(() => setToast(null), ms);
+  }, []);
+  useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
+  const putBack = useCallback(
+    (ev: NewsEvent, at: number) =>
+      setData((d) => {
+        if (!d || d.whats_new.some((x) => x.event_id === ev.event_id)) return d;
+        const list = [...d.whats_new];
+        list.splice(Math.min(at, list.length), 0, ev);
+        return { ...d, whats_new: list };
+      }),
+    [setData],
+  );
+  const act = useCallback(
+    (ev: NewsEvent, action: NewsAction) => {
+      const at = Math.max(0, data?.whats_new.findIndex((x) => x.event_id === ev.event_id) ?? 0);
+      setData((d) => (d ? { ...d, whats_new: d.whats_new.filter((x) => x.event_id !== ev.event_id) } : d));
+      show({ ev, at, text: action === "watched" ? `Marked watched · ${ev.show}` : "Dismissed", undo: true });
+      api<NewsDismissed>(`/whats-new/${ev.event_id}/${action === "watched" ? "watched" : "dismiss"}`, { method: "POST" }).catch(() => {
+        putBack(ev, at);
+        show({ ev, at, text: "Couldn't save that. Try again.", undo: false }, 4000);
+      });
+    },
+    [data, setData, show, putBack],
+  );
+  const undo = useCallback(() => {
+    if (!toast) return;
+    const { ev, at } = toast;
+    putBack(ev, at);
+    show(null);
+    api(`/whats-new/${ev.event_id}/restore`, { method: "POST" }).catch(() => {
+      setData((d) => (d ? { ...d, whats_new: d.whats_new.filter((x) => x.event_id !== ev.event_id) } : d));
+      show({ ev, at, text: "Couldn't undo that.", undo: false }, 4000);
+    });
+  }, [toast, putBack, show, setData]);
+  return { toast, act, undo };
+}
+
 export default function HomePage() {
   const { data, loading, reload, setData } = useApi<Home>("/home");
   const { data: me } = useApi<Me>("/me");
+  const news = useNewsActions(data, setData);
   // Once they start answering, the card stays until they leave, even though needs_taste flips.
   const [started, setStarted] = useState(false);
   const [told, setTold] = useState(false);
@@ -142,15 +191,21 @@ export default function HomePage() {
 
       <Section title="What's new">
           {data.whats_new.length ? (
-            <div className="glass event-list">
-              {data.whats_new.map((ev, i) => (
-                <EventRow key={i} ev={ev} />
+            <div className="glass event-list" role="list">
+              {data.whats_new.map((ev) => (
+                <EventRow key={ev.event_id} ev={ev} onAct={news.act} />
               ))}
             </div>
           ) : (
             <Empty>Nothing new in the last month. Renewals, premieres and new episodes for your shows land here.</Empty>
           )}
       </Section>
+
+      {news.toast && (
+        <Toast key={`${news.toast.ev.event_id}-${news.toast.text}`} onUndo={news.toast.undo ? news.undo : undefined}>
+          {news.toast.text}
+        </Toast>
+      )}
 
       {data.trending.length > 0 && (
         <Section title="Trending">
