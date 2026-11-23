@@ -65,6 +65,22 @@ The weights and thresholds above are Telly's own starting values, not published 
 6. Hu, Koren & Volinsky, ICDM 2008 — http://yifanhu.net/PUB/cf.pdf
 7. Cosley et al., CHI 2003 — https://experts.umn.edu/en/publications/is-seeing-believing-how-recommender-interfaces-affect-users-opini
 
+## Mark watched from What's new (2026-11-23)
+
+"Watched" on a What's new release (episodes out, or in Plex), or plexbot's `mark_news_watched`,
+hides the item for that person and tells History where they are with the show
+(`history.note_watched`). History is per title, so it writes a status, never an episode:
+
+- **A status they set stays**, dropped included. What they set wins.
+- **Plex already says watching, caught up or finished:** nothing is written. Plex plays are never
+  copied, and an explicit `watching` would freeze over Plex's own `caught_up`.
+- **Otherwise** (never played on Plex, or stalled there): `finished` when the release reaches the
+  last episode of a show that has ended or been canceled, else `watching`. `caught_up` is Plex's
+  word and not a status people set; `finished` on a running show would be wrong.
+- **Undo** (`restore`) takes back exactly what was written, unless they changed that status since.
+  A row it created goes again, unless they've rated the title meanwhile.
+- It never sets a rating, and never marks anything watched on Plex.
+
 ## Home: based on your recent watches (2026-11-16)
 
 A separate home rail uses the last three distinct Plex titles watched in the past 30 days,
