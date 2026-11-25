@@ -113,7 +113,7 @@ export default function ForYouPage() {
       <header className="page-head">
         <h1 className="page-title">For you</h1>
         {catalog ? <p className="page-sub">The best-rated anime shows and films, refreshed daily. Watched ones are marked.</p> : <p className="page-sub">
-          Picked from what you&apos;ve watched on Plex, how you rated it on <Link href="/history" className="inline-link">History</Link> and your IMDb ratings, plus what&apos;s trending this week.
+          Picked from what you&apos;ve been watching on Plex, your saved plexbot preferences, ratings on <Link href="/history" className="inline-link">History</Link> and IMDb, plus what&apos;s trending this week.
           Thumbs up for more like it, thumbs down and it&apos;s gone. <Link href="/taste" className="inline-link">Tune your taste</Link>
         </p>}
         <div className="toolbar">

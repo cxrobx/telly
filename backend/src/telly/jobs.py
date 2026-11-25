@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from sqlalchemy import select
-from .models import User
+from .models import NewReleasePicks, User
 
 from .alerts import DeliveryReport, deliver
 from .clients.notify import DiscordDM, Ntfy
@@ -135,13 +135,21 @@ def run_hot() -> tuple[PollReport, DeliveryReport]:
 
 
 def run_recent() -> None:
-    """Hourly Plex history sync, then recent-watch picks. No model calls or notifications."""
+    """Hourly Plex history sync, then recent-watch picks (and initial What's new picks for
+    members who haven't had a nightly build yet). No model calls or notifications."""
     run_sync()
+    tmdb = TMDBClient()
+    trending: dict[str, list[dict]] | None = None
     with session_scope() as s:
-        ids = list(s.scalars(select(User.plex_id).where(User.removed_at.is_(None))))
-    for pid in ids:
+        members = [(u.plex_id, u.overseerr_id is not None)
+                   for u in s.scalars(select(User).where(User.removed_at.is_(None)))]
+    for pid, has_seerr in members:
         try:
             with session_scope() as s:
-                recs.build_recent_for(s, TMDBClient(), pid)
+                recs.build_recent_for(s, tmdb, pid)
+                if has_seerr and s.get(NewReleasePicks, pid) is None:
+                    if trending is None:
+                        trending = {"tv": tmdb.trending("tv"), "movie": tmdb.trending("movie")}
+                    recs.build_new_releases_for(s, tmdb, pid, trending=trending, use_llm=False)
         except Exception as e:  # one member or upstream failure keeps the previous picks
             log.warning("recent picks failed for %s: %s", pid, e)

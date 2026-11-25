@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 import httpx
 
 from ..config import get_settings
@@ -12,6 +14,9 @@ BASE_URL = "https://api.themoviedb.org/3"
 class TMDBClient:
     def __init__(self, token: str | None = None, client: httpx.Client | None = None) -> None:
         self._anime_pages: dict[tuple[str, int], list[dict]] = {}
+        self._new_pages: dict[tuple[str, str, str, int], list[dict]] = {}
+        self._airing_pages: dict[tuple[str, str, int], list[dict]] = {}
+        self._genre_pages: dict[tuple[str, int, int], list[dict]] = {}
         self.http = client or httpx.Client(
             base_url=BASE_URL, timeout=15.0,
             headers={"Authorization": f"Bearer {token or get_settings().tmdb_token}",
@@ -52,6 +57,41 @@ class TMDBClient:
                 include_adult="false", sort_by="popularity.desc", page=page,
                 **{"vote_count.gte": 50}) or {}).get("results", [])
         return self._anime_pages[key]
+
+    def new_releases(self, media_type: str, since: date, until: date, page: int = 1) -> list[dict]:
+        """Public new TV premieres or movie releases in [since, until], cached across a batch."""
+        lo, hi = since.isoformat(), until.isoformat()
+        key = (media_type, lo, hi, page)
+        if key not in self._new_pages:
+            if media_type == "tv":
+                params = {"first_air_date.gte": lo, "first_air_date.lte": hi, "vote_count.gte": 10}
+            else:
+                params = {"primary_release_date.gte": lo, "primary_release_date.lte": hi,
+                          "vote_count.gte": 15}
+            self._new_pages[key] = (self._get(
+                f"/discover/{media_type}", include_adult="false", sort_by="popularity.desc",
+                page=page, **params) or {}).get("results", [])
+        return self._new_pages[key]
+
+    def airing_recently(self, since: date, until: date, page: int = 1) -> list[dict]:
+        """Public TV shows actively airing episodes in [since, until] (catches new seasons)."""
+        lo, hi = since.isoformat(), until.isoformat()
+        key = (lo, hi, page)
+        if key not in self._airing_pages:
+            self._airing_pages[key] = (self._get(
+                "/discover/tv", include_adult="false", sort_by="popularity.desc", page=page,
+                **{"air_date.gte": lo, "air_date.lte": hi, "vote_count.gte": 30}) or {}).get("results", [])
+        return self._airing_pages[key]
+
+    def discover_genre(self, media_type: str, genre_id: int, page: int = 1) -> list[dict]:
+        """Public popular, well-rated titles for a single genre, cached across a batch."""
+        key = (media_type, genre_id, page)
+        if key not in self._genre_pages:
+            self._genre_pages[key] = (self._get(
+                f"/discover/{media_type}", with_genres=genre_id, include_adult="false",
+                sort_by="popularity.desc", page=page,
+                **{"vote_count.gte": 50, "vote_average.gte": 6.8}) or {}).get("results", [])
+        return self._genre_pages[key]
 
     def acclaimed_anime(self, media_type: str, page: int = 1) -> list[dict]:
         return (self._get(f"/discover/{media_type}", with_genres=16,

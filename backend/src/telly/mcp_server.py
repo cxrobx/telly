@@ -56,10 +56,14 @@ async def _run(ctx: Context, fn: Callable) -> str:
 
 @mcp.tool()
 async def whats_new(ctx: Context, days: int = 14) -> str:
-    """What happened recently to the shows the caller follows: new episodes and seasons out,
-    renewals, cancellations, premiere dates announced. Use for "anything new?" / "what dropped?".
-    Each item's event_id is what dismiss_news / mark_news_watched take."""
-    return await _run(ctx, lambda s, pid: {"events": shows.whats_new(s, pid, days=days)})
+    """What happened recently to the shows the caller follows (new episodes, seasons, renewals,
+    cancellations, premiere dates), plus `new_for_you`: fresh shows and movies matched to their
+    taste, recent watches, and saved preferences. Use for "anything new?" / "what dropped?".
+    Each event's event_id is what dismiss_news / mark_news_watched take."""
+    return await _run(ctx, lambda s, pid: {
+        "events": shows.whats_new(s, pid, days=days),
+        "new_for_you": recs.whats_new_picks_for_user(s, pid, limit=6),
+    })
 
 
 def _news(fn: Callable) -> Callable:
@@ -303,8 +307,13 @@ async def remember(ctx: Context, text: str, kind: str, replaces: int | None = No
     rated (record_taste does that). Never: contact details, credentials, payment details,
     anything about another person on the server, or anything sensitive (health, religion,
     politics, sexuality). Always tell them in a few words that you saved it."""
-    return await _run(ctx, lambda s, pid: _saved(
-        lambda: memory.save(s, pid, text, kind, "told" if they_asked else "chat", replaces)))
+    def run(s, pid):
+        out = _saved(lambda: memory.save(s, pid, text, kind, "told" if they_asked else "chat", replaces))
+        if "saved" in out and kind in recs.TASTE_MEMORY_KINDS and recs.needs_warm(s, pid):
+            s.commit()
+            recs.warm_in_background(pid)
+        return out
+    return await _run(ctx, run)
 
 
 @mcp.tool()

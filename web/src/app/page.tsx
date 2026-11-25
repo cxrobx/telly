@@ -172,6 +172,14 @@ export default function HomePage() {
   };
   useBackdrop(backdrop(data?.hero?.backdrop_path ?? data?.for_you[0]?.backdrop_path, "w780"));
 
+  const dropNewPick = (tmdb_id: number, media_type: "tv" | "movie") =>
+    setData((d) =>
+      d
+        ? { ...d, whats_new_picks: (d.whats_new_picks ?? []).filter((x) => !(x.tmdb_id === tmdb_id && x.media_type === media_type)) }
+        : d,
+    );
+  const newPicks = data?.whats_new_picks ?? [];
+
   if (loading || !data) return <Skeleton rows={4} />;
   return (
     <div className="page">
@@ -190,15 +198,39 @@ export default function HomePage() {
       )}
 
       <Section title="What's new">
-          {data.whats_new.length ? (
-            <div className="glass event-list" role="list">
-              {data.whats_new.map((ev) => (
-                <EventRow key={ev.event_id} ev={ev} onAct={news.act} />
+        {data.whats_new.length > 0 && (
+          <div className="glass event-list" role="list">
+            {data.whats_new.map((ev) => (
+              <EventRow key={ev.event_id} ev={ev} onAct={news.act} />
+            ))}
+          </div>
+        )}
+        {newPicks.length > 0 && (
+          <div className={data.whats_new.length > 0 ? "news-fresh-wrap" : undefined}>
+            {data.whats_new.length > 0 ? (
+              <h3 className="news-subhead">New releases for you</h3>
+            ) : (
+              <p className="muted small news-caption">Fresh releases matched to your taste, saved preferences, and recent watches.</p>
+            )}
+            <Rail label="New releases for you">
+              {newPicks.map((p) => (
+                <PickCard
+                  key={`${p.media_type}-${p.tmdb_id}`}
+                  pick={p}
+                  canRequest={me?.can_request}
+                  compact
+                  badgeLabel={p.kind_label}
+                  trendingBadge={false}
+                  quickActions
+                  onRated={(v) => v === -1 && dropNewPick(p.tmdb_id, p.media_type)}
+                />
               ))}
-            </div>
-          ) : (
-            <Empty>Nothing new in the last month. Renewals, premieres and new episodes for your shows land here.</Empty>
-          )}
+            </Rail>
+          </div>
+        )}
+        {data.whats_new.length === 0 && newPicks.length === 0 && (
+          <Empty>Nothing new in the last month. Renewals, premieres and new episodes for your shows land here.</Empty>
+        )}
       </Section>
 
       {news.toast && (

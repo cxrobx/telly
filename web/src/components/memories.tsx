@@ -123,8 +123,8 @@ export function Memories() {
   return (
     <div className="glass memory-card">
       <p className="muted small">
-        Lasting things you&apos;ve told plexbot about yourself, like subtitles over dubs, your TV, or where you are in a show. It uses them in every chat, on
-        Discord and here, and says so when it saves one. Only you can see them. Plans are dropped after 60 days unless they&apos;re updated.
+        Lasting things you&apos;ve told plexbot about yourself, like genres you love, subtitles over dubs, your TV, or where you are in a show. Plexbot uses them in every chat, on
+        Discord and here, and your preferences and plans also shape Telly&apos;s recommendations. Only you can see them. Plans are dropped after 60 days unless they&apos;re updated.
       </p>
       {data.memories.length === 0 ? (
         <Empty>Nothing yet. Tell plexbot something about how you watch, or add it below.</Empty>

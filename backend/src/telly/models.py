@@ -260,6 +260,17 @@ class RecentPicks(Base):
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class NewReleasePicks(Base):
+    """Fresh releases matched to one member's taste, recent watches, and plexbot memories.
+    Keeps What's new populated with things worth adding even when followed shows are quiet."""
+
+    __tablename__ = "new_release_picks"
+
+    plex_id: Mapped[int] = mapped_column(ForeignKey("users.plex_id"), primary_key=True)
+    picks: Mapped[list] = mapped_column(JSON, default=list)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class AnimeCatalog(Base):
     """One shared snapshot of public anime metadata. No member data."""
 

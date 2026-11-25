@@ -212,6 +212,8 @@ export function PickCard({
   onRated,
   compact = false,
   trendingBadge = true,
+  badgeLabel,
+  quickActions = false,
   catalogMode = false,
   showReason = true,
 }: {
@@ -219,6 +221,8 @@ export function PickCard({
   canRequest?: boolean;
   onRated?: (value: -1 | 1) => void;
   compact?: boolean;
+  badgeLabel?: string; // e.g. "New series", "New movie", "New season" on What's new cards
+  quickActions?: boolean; // compact Request/Follow + dismiss row on What's new cards
   catalogMode?: boolean;
   showReason?: boolean; // For You's Summaries toggle; off hides the text under the scores
   trendingBadge?: boolean; // off in the Trending rail, where every card would carry it
@@ -226,6 +230,7 @@ export function PickCard({
   const [rated, setRated] = useState<0 | 1 | -1>(0);
   const [leaving, setLeaving] = useState(false);
   const [req, setReq] = useState<"idle" | "busy" | "done" | "error">("idle");
+  const [followState, setFollowState] = useState<"idle" | "busy" | "done" | "error">("idle");
   const [err, setErr] = useState<string | null>(null);
   const rate = async (value: -1 | 1) => {
     const next = rated === value ? 0 : value;
@@ -238,11 +243,23 @@ export function PickCard({
   };
   const request = async () => {
     setReq("busy");
+    setErr(null);
     try {
       await api("/request", { body: { tmdb_id: pick.tmdb_id, media_type: pick.media_type } });
       setReq("done");
     } catch (e) {
       setReq("error");
+      setErr((e as Error).message);
+    }
+  };
+  const follow = async () => {
+    setFollowState("busy");
+    setErr(null);
+    try {
+      await api(`/shows/${pick.tmdb_id}/follow`, { method: "POST" });
+      setFollowState("done");
+    } catch (e) {
+      setFollowState("error");
       setErr((e as Error).message);
     }
   };
@@ -252,12 +269,13 @@ export function PickCard({
       <Poster path={pick.poster_path} alt={pick.title} />
       <div className="pick-badges">
         {catalogMode && pick.watched && <Chip tone="accent">Watched</Chip>}
+        {badgeLabel && <Chip tone="accent">{badgeLabel}</Chip>}
         {pick.in_library && (
           <Chip tone="good">
             <Library size={12} /> On Plex
           </Chip>
         )}
-        {pick.trending && trendingBadge && (
+        {!badgeLabel && pick.trending && trendingBadge && (
           <Chip tone="accent">
             <TrendingUp size={12} /> Trending
           </Chip>
@@ -299,7 +317,39 @@ export function PickCard({
             )}
           </div>
         )}
-        {req === "error" && <p className="error-text">{err}</p>}
+        {compact && quickActions && (
+          <div className="pick-actions compact-actions">
+            {!pick.in_library && canRequest ? (
+              <button className="btn btn-small" disabled={req === "busy" || req === "done"} onClick={request}>
+                {req === "done" ? (
+                  <>
+                    <Check size={13} /> Requested
+                  </>
+                ) : (
+                  <>
+                    <Plus size={13} /> Request
+                  </>
+                )}
+              </button>
+            ) : pick.media_type === "tv" ? (
+              <button className="btn btn-small" disabled={followState === "busy" || followState === "done"} onClick={follow}>
+                {followState === "done" ? (
+                  <>
+                    <Check size={13} /> Following
+                  </>
+                ) : (
+                  <>
+                    <Plus size={13} /> Follow
+                  </>
+                )}
+              </button>
+            ) : null}
+            <button className="icon-btn ghost compact-dismiss" aria-label={`Not for me: ${pick.title}`} title="Not for me" disabled={leaving} onClick={() => rate(-1)}>
+              <X size={14} />
+            </button>
+          </div>
+        )}
+        {(req === "error" || followState === "error") && <p className="error-text">{err}</p>}
       </div>
     </article>
   );

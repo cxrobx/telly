@@ -56,6 +56,9 @@ export type Pick = {
   media_type: "tv" | "movie";
   title: string;
   year: number | null;
+  released?: string | null;
+  new_kind?: string;
+  kind_label?: string;
   reason: string;
   because: string[];
   trending: boolean;
@@ -89,6 +92,7 @@ export type Home = {
   hero: TimelineItem | null;
   airing_soon: TimelineItem[];
   whats_new: NewsEvent[];
+  whats_new_picks: Pick[];
   for_you: Pick[];
   recent_picks: Pick[];
   trending: Pick[];

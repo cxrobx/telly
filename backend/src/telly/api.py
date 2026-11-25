@@ -26,7 +26,7 @@ from .config import get_settings
 from .crypto import COOKIE, encrypt_token, make_session, read_session
 from .db import session_scope
 from .mcp_server import _alert_settings
-from .models import AlertPref, ApnsDevice, IdentityLink, Play, User, utcnow
+from .models import AlertPref, ApnsDevice, IdentityLink, NewReleasePicks, Play, User, utcnow
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
@@ -158,15 +158,25 @@ def disconnect(pid: int = Me) -> dict:
 def home(pid: int = Me) -> dict:
     with session_scope() as s:
         timeline = shows.upcoming(s, pid, days=30)
-        news = shows.whats_new(s, pid, days=30)[:12]
+        news_events = shows.whats_new(s, pid, days=30)[:12]
+        whats_new_picks = recs.whats_new_picks_for_user(s, pid)
         picks = recs.for_user(s, pid, limit=recs.HOME_PICKS)
+        trending = recs.trending_for_user(s, pid)
+        if s.get(NewReleasePicks, pid) is not None and whats_new_picks:
+            seen_new = {(p["tmdb_id"], p["media_type"]) for p in whats_new_picks}
+            deduped = [p for p in trending if (p["tmdb_id"], p["media_type"]) not in seen_new]
+            if deduped:
+                trending = deduped
         hero = (timeline["dated"][0] if timeline["dated"] else None)
         u = s.get(User, pid)
-        return {"hero": hero, "airing_soon": timeline["dated"][:10], "whats_new": news,
-                "for_you": picks, "trending": recs.trending_for_user(s, pid),
+        return {"hero": hero, "airing_soon": timeline["dated"][:10], "whats_new": news_events,
+                "whats_new_picks": whats_new_picks,
+                "for_you": picks, "trending": trending,
                 "recent_picks": recs.recent_for_user(s, pid),
                 # nothing to base picks on yet: the home page asks them what they like
-                "needs_taste": u.taste_prompt_dismissed_at is None and not recs.seeds_for(s, pid),
+                "needs_taste": (u.taste_prompt_dismissed_at is None
+                                and not recs.seeds_for(s, pid)
+                                and not recs.profile_memories(s, pid)),
                 "building": recs.warming(pid)}
 
 
@@ -186,7 +196,8 @@ def timeline(days: int = 180, pid: int = Me) -> dict:
 @router.get("/whats-new")
 def whats_new(days: int = 60, pid: int = Me) -> dict:
     with session_scope() as s:
-        return {"events": shows.whats_new(s, pid, days=min(days, 365))}
+        return {"events": shows.whats_new(s, pid, days=min(days, 365)),
+                "picks": recs.whats_new_picks_for_user(s, pid, limit=12)}
 
 
 def _news_write(fn) -> dict:
@@ -489,24 +500,31 @@ class MemoryIn(BaseModel):
     kind: Literal["preference", "setup", "plan"]
 
 
-def _save_memory(pid: int, body: MemoryIn, replaces: int | None = None) -> dict:
+def _save_memory(pid: int, body: MemoryIn, background: BackgroundTasks | None = None,
+                 replaces: int | None = None) -> dict:
     try:
         with session_scope() as s:
-            return {"memory": memory.save(s, pid, body.text, body.kind, "web", replaces)}
+            saved = memory.save(s, pid, body.text, body.kind, "web", replaces)
+            should_warm = (background is not None
+                           and body.kind in recs.TASTE_MEMORY_KINDS
+                           and recs.needs_warm(s, pid))
     except memory.MemoryNotFound as e:  # someone else's id reads as missing, like a bad one
         raise HTTPException(404, str(e)) from None
     except memory.MemoryError as e:
         raise HTTPException(400, str(e)) from None
+    if should_warm and background is not None:
+        background.add_task(recs.warm, pid)
+    return {"memory": saved}
 
 
 @router.post("/memories")
-def add_memory(body: MemoryIn, pid: int = Me) -> dict:
-    return _save_memory(pid, body)
+def add_memory(body: MemoryIn, background: BackgroundTasks, pid: int = Me) -> dict:
+    return _save_memory(pid, body, background=background)
 
 
 @router.post("/memories/{memory_id}/edit")
-def edit_memory(memory_id: int, body: MemoryIn, pid: int = Me) -> dict:
-    return _save_memory(pid, body, replaces=memory_id)
+def edit_memory(memory_id: int, body: MemoryIn, background: BackgroundTasks, pid: int = Me) -> dict:
+    return _save_memory(pid, body, background=background, replaces=memory_id)
 
 
 @router.post("/memories/{memory_id}/delete")

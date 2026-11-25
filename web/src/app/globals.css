@@ -365,6 +365,12 @@ input, textarea, select { font: inherit; font-size: 16px; }
 .pick-card.compact .pick-reason { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .pick-actions { display: flex; gap: 6px; align-items: center; margin-top: auto; padding-top: 6px; flex-wrap: wrap; }
 .pick-actions .icon-btn { width: 34px; height: 34px; }
+.pick-actions.compact-actions { flex-wrap: nowrap; gap: 4px; padding-top: 8px; }
+.pick-actions.compact-actions .btn-small { padding: 5px 10px; font-size: 12.5px; min-width: 0; white-space: nowrap; }
+.pick-actions.compact-actions .compact-dismiss { margin-left: auto; width: 30px; height: 30px; flex: none; }
+.news-fresh-wrap { margin-top: 16px; }
+.news-subhead { margin: 0 0 8px; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-3); }
+.news-caption { margin: -6px 0 10px; }
 
 /* ── timeline ─────────────────────────────────────────────────────────── */
 .tl-strip {
