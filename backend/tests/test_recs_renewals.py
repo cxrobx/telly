@@ -364,6 +364,30 @@ def test_whats_new_shows_only_the_latest_release_per_show(s):
     ]
 
 
+def test_whats_new_folds_a_shows_in_plex_batches_into_one_card(s):
+    """A season imported in batches more than 2 h apart is several in_plex events: one card
+    per show, listing every episode, and dismissing it doesn't bring back the older batches."""
+    from telly import news
+    from telly.shows import whats_new
+
+    s.add(User(plex_id=A, pms_account_id=1, username="a"))
+    s.flush()
+    show(s, id=5, name="Fallout")
+    now = utcnow()
+    for ep in (1, 8, 7, 5):  # import order, not episode order
+        s.add(Event(tmdb_id=5, media_type="tv", kind="in_plex", dedupe_key=f"p{ep}",
+                    payload={"season": 1, "episodes": [[1, ep]]},
+                    detected_at=now - timedelta(hours=10 - ep)))
+    s.add(Event(tmdb_id=5, kind="renewed", payload={"season": 2, "via": "status"}, dedupe_key="r",
+                detected_at=now - timedelta(days=1)))
+    s.commit()
+
+    items = whats_new(s, A)
+    assert [e["summary"] for e in items] == ["Fallout S1E1–E8 are in Plex", "Fallout was renewed for season 2"]
+    news.dismiss(s, A, items[0]["event_id"])
+    assert [e["summary"] for e in whats_new(s, A)] == ["Fallout was renewed for season 2"]
+
+
 @pytest.mark.parametrize("last, nxt, airing", [
     ((3, 10, "2026-10-20"), (3, 11, "2026-11-09"), True),    # weekly, mid-season
     ((3, 1, "2026-10-30"), (3, 2, "2026-11-30"), True),      # right at the limit

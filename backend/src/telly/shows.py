@@ -166,21 +166,30 @@ def whats_new(s: Session, plex_id: int, days: int = 14) -> list[dict]:
         .where(Event.tmdb_id.in_(follows), Event.detected_at >= since)
         .order_by(Event.detected_at.desc(), Event.id.desc()))
     hidden = news.dismissed_ids(s, plex_id)
+    rows = [(ev, t) for ev, t in rows if not (ev.payload or {}).get("quiet")]  # old news isn't news
+    # Every in_plex batch in the window, per show: the one card left shows all their episodes
+    # (Sonarr batches more than 2 h apart are separate events, so a season can be eight).
+    in_plex_eps: dict[int, set] = {}
+    for ev, t in rows:
+        if ev.kind == "in_plex":
+            in_plex_eps.setdefault(t.tmdb_id, set()).update(
+                tuple(e) for e in (ev.payload or {}).get("episodes") or [])
     out, released = [], set()
     for ev, t in rows:
-        if (ev.payload or {}).get("quiet"):  # old news isn't news
-            continue
-        if ev.kind == "episodes_aired":  # only a show's latest release; renewals and the like stay
-            if t.tmdb_id in released:
+        if ev.kind in news.WATCHABLE:  # only a show's latest release; renewals and the like stay
+            if (ev.kind, t.tmdb_id) in released:
                 continue
-            released.add(t.tmdb_id)
+            released.add((ev.kind, t.tmdb_id))
         # after the latest-release check, so dismissing S2E10 doesn't bring back S2E9
         if ev.id in hidden:
             continue
+        payload = ev.payload
+        if ev.kind == "in_plex" and in_plex_eps.get(t.tmdb_id):
+            payload = {**(payload or {}), "episodes": [list(e) for e in sorted(in_plex_eps[t.tmdb_id])]}
         out.append({"event_id": ev.id, "watchable": ev.kind in news.WATCHABLE,
                     "when": aware(ev.detected_at).date().isoformat(), "show": t.name, "kind": ev.kind,
-                    "tmdb_id": t.tmdb_id, "payload": ev.payload,
-                    "summary": describe(ev.kind, ev.payload, t.name), **_art(t)})
+                    "tmdb_id": t.tmdb_id, "payload": payload,
+                    "summary": describe(ev.kind, payload, t.name), **_art(t)})
     return out
 
 
